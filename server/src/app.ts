@@ -1,6 +1,10 @@
 import express, { Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
 import authRoutes from './modules/auth/auth.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
 import productsRoutes from './modules/products/products.routes.js';
@@ -23,7 +27,13 @@ export function createApp(): Express {
   const app = express();
 
   // Security Middleware
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    })
+  );
+
   app.use(
     cors({
       origin: [config.clientUrl, config.frontendUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'],
@@ -37,14 +47,25 @@ export function createApp(): Express {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
+  // Locate Client Build Distribution
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const candidatePaths = [
+    path.resolve(process.cwd(), 'client/dist'),
+    path.resolve(process.cwd(), '../client/dist'),
+    path.resolve(__dirname, '../../client/dist'),
+    path.resolve(__dirname, '../../../client/dist'),
+  ];
+  const clientDistPath = candidatePaths.find((p) => fs.existsSync(path.join(p, 'index.html')));
+
+  if (clientDistPath) {
+    app.use(express.static(clientDistPath));
+  }
+
   // General API Rate Limiting
   app.use('/api', apiRateLimiter);
 
-  // Root & Health Check
-  app.get('/', (_req, res) => {
-    res.status(200).json({ name: 'Brightloop Subscription Management API', status: 'ok' });
-  });
-
+  // API Health Check
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
@@ -65,7 +86,26 @@ export function createApp(): Express {
   app.use('/api/payments', paymentsRoutes);
   app.use('/api/reports', reportsRoutes);
 
-  // 404 Handler
+  // Root fallback: serve SPA if client build is present, otherwise return API status
+  app.get('/', (_req, res) => {
+    if (clientDistPath) {
+      return res.sendFile(path.join(clientDistPath, 'index.html'));
+    }
+    res.status(200).json({ name: 'Brightloop Subscription Management API', status: 'ok' });
+  });
+
+  // Fallback for client-side routing on non-API routes
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    if (clientDistPath) {
+      return res.sendFile(path.join(clientDistPath, 'index.html'));
+    }
+    next();
+  });
+
+  // 404 Handler for unhandled API endpoints
   app.use((_req, res) => {
     res.status(404).json({ message: 'Requested resource or route was not found.' });
   });
