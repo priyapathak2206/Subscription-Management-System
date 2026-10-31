@@ -440,3 +440,4 @@ export async function printInvoice(req: Request, res: Response) {
     res.status(500).send(`<h1>Error generating printable invoice: ${error.message}</h1>`);
   }
 }
+

@@ -19,3 +19,4 @@ router.post('/', requireRole(Role.ADMIN, Role.STAFF, Role.CUSTOMER), handleCreat
 router.post('/:id/transition', requireRole(Role.ADMIN, Role.STAFF), handleTransitionSubscription);
 
 export default router;
+

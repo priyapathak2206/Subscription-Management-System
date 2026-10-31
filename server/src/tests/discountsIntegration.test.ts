@@ -66,3 +66,4 @@ describe('Discount Auto-Application during Invoice Generation', () => {
     expect(discountAmount).toBe(30); // Capped at subtotal 30, cannot make total negative
   });
 });
+

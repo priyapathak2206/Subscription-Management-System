@@ -166,3 +166,4 @@ export async function handleTransitionSubscription(req: Request, res: Response) 
     res.status(status).json({ message: error.message || 'Transition failed' });
   }
 }
+

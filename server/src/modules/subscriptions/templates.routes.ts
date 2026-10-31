@@ -21,3 +21,4 @@ router.put('/:id', requireRole(Role.ADMIN, Role.STAFF), updateQuotationTemplate)
 router.delete('/:id', requireRole(Role.ADMIN, Role.STAFF), deleteQuotationTemplate);
 
 export default router;
+

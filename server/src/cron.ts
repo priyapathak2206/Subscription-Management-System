@@ -57,3 +57,4 @@ export function setupCronJobs(billingJobFn?: () => Promise<any>) {
 }
 
 export default setupCronJobs;
+
