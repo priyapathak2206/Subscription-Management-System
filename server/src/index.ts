@@ -1,6 +1,8 @@
 import { createApp } from './app.js';
 import { config } from './config/index.js';
 import prisma from './db/prisma.js';
+import { setupCronJobs } from './cron.js';
+import { runRecurringBillingBatch } from './modules/invoices/invoices.service.js';
 
 const app = createApp();
 
@@ -9,6 +11,9 @@ async function startServer() {
     // Verify database connection
     await prisma.$connect();
     console.log(' Connected to PostgreSQL database successfully.');
+
+    // Initialize scheduled cron jobs (auto-close & recurring billing)
+    setupCronJobs(runRecurringBillingBatch);
   } catch (err: any) {
     console.warn(' Database connection warning:', err.message);
     console.warn('  Ensure PostgreSQL is running via `docker-compose up -d` or a local instance.');
@@ -34,4 +39,3 @@ async function startServer() {
 }
 
 startServer();
-

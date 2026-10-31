@@ -7,6 +7,14 @@ import productsRoutes from './modules/products/products.routes.js';
 import plansRoutes from './modules/plans/plans.routes.js';
 import taxesRoutes from './modules/taxes/taxes.routes.js';
 import discountsRoutes from './modules/discounts/discounts.routes.js';
+
+// Billing & Reporting Routes (Stream B)
+import subscriptionsRoutes from './modules/subscriptions/subscriptions.routes.js';
+import templatesRoutes from './modules/subscriptions/templates.routes.js';
+import invoicesRoutes from './modules/invoices/invoices.routes.js';
+import paymentsRoutes from './modules/payments/payments.routes.js';
+import reportsRoutes from './modules/reports/reports.routes.js';
+
 import { errorHandler } from './middleware/errorHandler.js';
 import { apiRateLimiter } from './middleware/rateLimiter.js';
 import { config } from './config/index.js';
@@ -18,7 +26,7 @@ export function createApp(): Express {
   app.use(helmet());
   app.use(
     cors({
-      origin: [config.frontendUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: [config.clientUrl, config.frontendUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'],
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
@@ -48,6 +56,13 @@ export function createApp(): Express {
   app.use('/api/plans', plansRoutes);
   app.use('/api/taxes', taxesRoutes);
   app.use('/api/discounts', discountsRoutes);
+
+  // Modules (Billing & Reporting)
+  app.use('/api/quotation-templates', templatesRoutes);
+  app.use('/api/subscriptions', subscriptionsRoutes);
+  app.use('/api/invoices', invoicesRoutes);
+  app.use('/api/payments', paymentsRoutes);
+  app.use('/api/reports', reportsRoutes);
 
   // 404 Handler
   app.use((_req, res) => {

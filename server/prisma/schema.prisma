@@ -55,17 +55,18 @@ enum PaymentMethod {
 }
 
 model User {
-  id                  String               @id @default(uuid())
-  name                String
-  email               String               @unique
-  passwordHash        String
-  role                Role                 @default(CUSTOMER)
-  isActive            Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  passwordResetTokens PasswordResetToken[]
-  subscriptions       Subscription[]
-  invoices            Invoice[]
+  id                   String                      @id @default(uuid())
+  name                 String
+  email                String                      @unique
+  passwordHash         String
+  role                 Role                        @default(CUSTOMER)
+  isActive             Boolean                     @default(true)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  passwordResetTokens  PasswordResetToken[]
+  subscriptions        Subscription[]
+  invoices             Invoice[]
+  statusHistoryChanges SubscriptionStatusHistory[]
 
   @@map("users")
 }
@@ -104,16 +105,17 @@ model Product {
 }
 
 model ProductVariant {
-  id                String             @id @default(uuid())
-  productId         String
-  product           Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
-  attribute         String             // e.g. "Brand"
-  value             String             // e.g. "Odoo"
-  extraPrice        Float              @default(0) // e.g. 560
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  subscriptionLines SubscriptionLine[]
-  invoiceLines      InvoiceLine[]
+  id                     String                  @id @default(uuid())
+  productId              String
+  product                Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute              String                  // e.g. "Brand"
+  value                  String                  // e.g. "Odoo"
+  extraPrice             Float                   @default(0) // e.g. 560
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  subscriptionLines      SubscriptionLine[]
+  invoiceLines           InvoiceLine[]
+  quotationTemplateLines QuotationTemplateLine[]
 
   @@index([productId])
   @@map("product_variants")
@@ -205,33 +207,40 @@ model QuotationTemplateLine {
   quotationTemplate   QuotationTemplate @relation(fields: [quotationTemplateId], references: [id], onDelete: Cascade)
   productId           String
   product             Product           @relation(fields: [productId], references: [id])
+  variantId           String?
+  variant             ProductVariant?   @relation(fields: [variantId], references: [id])
   quantity            Int               @default(1)
+  unitPrice           Float?
 
   @@index([quotationTemplateId])
   @@index([productId])
+  @@index([variantId])
   @@map("quotation_template_lines")
 }
 
 model Subscription {
-  id              String                      @id @default(uuid())
-  number          String                      @unique
-  customerId      String
-  customer        User                        @relation(fields: [customerId], references: [id])
-  planId          String
-  plan            Plan                        @relation(fields: [planId], references: [id])
-  startDate       DateTime
-  expiryDate      DateTime?
-  paymentTerms    String?
-  status          SubscriptionStatus          @default(DRAFT)
-  nextBillingDate DateTime?
-  createdAt       DateTime                    @default(now())
-  updatedAt       DateTime                    @updatedAt
-  lines           SubscriptionLine[]
-  history         SubscriptionStatusHistory[]
-  invoices        Invoice[]
+  id                  String                      @id @default(uuid())
+  number              String                      @unique
+  customerId          String
+  customer            User                        @relation(fields: [customerId], references: [id])
+  planId              String
+  plan                Plan                        @relation(fields: [planId], references: [id])
+  startDate           DateTime
+  expiryDate          DateTime?
+  quotationExpiryDate DateTime?
+  paymentTerms        String?
+  status              SubscriptionStatus          @default(DRAFT)
+  nextBillingDate     DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  lines               SubscriptionLine[]
+  history             SubscriptionStatusHistory[]
+  invoices            Invoice[]
 
   @@index([status])
   @@index([customerId])
+  @@index([nextBillingDate])
+  @@index([expiryDate])
   @@map("subscriptions")
 }
 
@@ -260,6 +269,8 @@ model SubscriptionStatusHistory {
   subscription   Subscription        @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   fromStatus     SubscriptionStatus?
   toStatus       SubscriptionStatus
+  changedById    String?
+  changedBy      User?               @relation(fields: [changedById], references: [id])
   changedAt      DateTime            @default(now())
   reason         String?
 
@@ -284,6 +295,8 @@ model Invoice {
   taxTotal       Float         @default(0)
   total          Float
   amountPaid     Float         @default(0)
+  sentAt         DateTime?
+  notes          String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   lines          InvoiceLine[]
@@ -293,6 +306,7 @@ model Invoice {
   @@index([status])
   @@index([dueDate])
   @@index([customerId])
+  @@index([periodStart])
   @@map("invoices")
 }
 
@@ -328,4 +342,3 @@ model Payment {
   @@index([invoiceId])
   @@map("payments")
 }
-
