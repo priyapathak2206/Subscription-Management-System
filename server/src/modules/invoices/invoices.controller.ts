@@ -174,7 +174,8 @@ export async function runBilling(req: Request, res: Response) {
       errors: summary.errors,
     });
   } catch (error: any) {
-    res.status(500).json({ message: error.message || 'Batch billing run failed' });
+    const status = error.statusCode || 500;
+    res.status(status).json({ message: error.message || 'Batch billing run failed' });
   }
 }
 

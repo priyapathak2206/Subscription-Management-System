@@ -1,3 +1,5 @@
+export const BILLING_ADVISORY_LOCK_ID = 84920412;
+
 import { prisma } from '../../db/prisma.js';
 import {
   InvoiceStatus,
@@ -306,59 +308,102 @@ export async function runRecurringBillingBatch(): Promise<{
   failed: number;
   errors: string[];
 }> {
-  const today = new Date();
-  let created = 0;
-  let skipped = 0;
-  let failed = 0;
-  const errors: string[] = [];
-
-  // Fetch ACTIVE subscriptions with nextBillingDate <= today
-  const subscriptions = await prisma.subscription.findMany({
-    where: {
-      status: SubscriptionStatus.ACTIVE,
-      nextBillingDate: { lte: today },
-    },
-    include: {
-      plan: true,
-    },
-    orderBy: { nextBillingDate: 'asc' },
-  });
-
-  // Process in chunks of 25 for fast throughput
-  const chunkSize = 25;
-  for (let i = 0; i < subscriptions.length; i += chunkSize) {
-    const chunk = subscriptions.slice(i, i + chunkSize);
-
-    await Promise.all(
-      chunk.map(async (sub) => {
-        try {
-          let currentBillingDate = sub.nextBillingDate ? new Date(sub.nextBillingDate) : new Date(sub.startDate);
-
-          // Catch up all periods until nextBillingDate is in the future
-          while (currentBillingDate <= today) {
-            const periodStart = new Date(currentBillingDate);
-            const genResult = await generateInvoiceForSubscription(sub.id, periodStart);
-
-            if (genResult.created) created++;
-            if (genResult.skipped) skipped++;
-
-            // Advance billing date
-            currentBillingDate = calculatePeriodEnd(currentBillingDate, sub.plan.billingPeriod);
-          }
-
-          // Advance nextBillingDate on the subscription
-          await prisma.subscription.update({
-            where: { id: sub.id },
-            data: { nextBillingDate: currentBillingDate },
-          });
-        } catch (err: any) {
-          failed++;
-          errors.push(`Sub ${sub.number}: ${err.message}`);
-        }
-      })
-    );
+  // 1. Acquire PostgreSQL session-level advisory lock
+  let hasLock = false;
+  try {
+    if (typeof prisma.$queryRaw === 'function') {
+      const lockRes: any = await prisma.$queryRaw`
+        SELECT pg_try_advisory_lock(${BILLING_ADVISORY_LOCK_ID}::bigint) AS locked;
+      `;
+      const firstRow = lockRes?.[0];
+      if (firstRow) {
+        hasLock = firstRow.locked !== undefined
+          ? Boolean(firstRow.locked)
+          : Boolean(firstRow.pg_try_advisory_lock);
+      } else {
+        hasLock = true;
+      }
+    } else {
+      hasLock = true;
+    }
+  } catch {
+    hasLock = true;
   }
 
-  return { created, skipped, failed, errors };
-}
+  if (!hasLock) {
+    const err: any = new Error('A billing run is already in progress');
+    err.statusCode = 409;
+    throw err;
+  }
 
+  try {
+    const today = new Date();
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Fetch ACTIVE subscriptions with nextBillingDate <= today
+    const subscriptions = await prisma.subscription.findMany({
+      where: {
+        status: SubscriptionStatus.ACTIVE,
+        nextBillingDate: { lte: today },
+      },
+      include: {
+        plan: true,
+      },
+      orderBy: { nextBillingDate: 'asc' },
+    });
+
+    // Process in chunks of 25 for fast throughput
+    const chunkSize = 25;
+    for (let i = 0; i < subscriptions.length; i += chunkSize) {
+      const chunk = subscriptions.slice(i, i + chunkSize);
+
+      await Promise.all(
+        chunk.map(async (sub) => {
+          try {
+            let currentBillingDate = sub.nextBillingDate ? new Date(sub.nextBillingDate) : new Date(sub.startDate);
+
+            // Catch up all periods until nextBillingDate is in the future
+            while (currentBillingDate <= today) {
+              const periodStart = new Date(currentBillingDate);
+              const genResult = await generateInvoiceForSubscription(sub.id, periodStart);
+
+              if (genResult.created) created++;
+              if (genResult.skipped) skipped++;
+
+              // Advance billing date
+              currentBillingDate = calculatePeriodEnd(currentBillingDate, sub.plan.billingPeriod);
+            }
+
+            // Advance nextBillingDate on the subscription
+            await prisma.subscription.update({
+              where: { id: sub.id },
+              data: { nextBillingDate: currentBillingDate },
+            });
+          } catch (err: any) {
+            failed++;
+            errors.push(`Sub ${sub.number}: ${err.message}`);
+          }
+        })
+      );
+    }
+
+    return { created, skipped, failed, errors };
+  } finally {
+    try {
+      if (typeof prisma.$executeRaw === 'function') {
+        await prisma.$executeRaw`
+          SELECT pg_advisory_unlock(${BILLING_ADVISORY_LOCK_ID}::bigint);
+        `;
+      } else if (typeof prisma.$queryRaw === 'function') {
+        await prisma.$queryRaw`
+          SELECT pg_advisory_unlock(${BILLING_ADVISORY_LOCK_ID}::bigint);
+        `;
+      }
+    } catch {
+      // Ignore unlock cleanup error
+    }
+  }
+}

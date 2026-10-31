@@ -63,7 +63,11 @@ export function setupCronJobs(billingJobFn?: () => Promise<any>) {
         const res = await billingJobFn();
         console.log('[Cron] Recurring billing completed:', res);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.statusCode === 409 || err.message?.includes('already in progress')) {
+        console.log('[Cron] Billing run already in progress. Skipping cron execution.');
+        return;
+      }
       console.error('[Cron] Error during recurring billing cron job:', err);
     }
   });
