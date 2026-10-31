@@ -43,13 +43,13 @@ interface UnpaidInvoice {
   customer?: { id: string; name: string; email: string };
 }
 
-const METHOD_BADGES: Record<string, { bg: string; text: string }> = {
-  CARD: { bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', },
-  UPI: { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  BANK_TRANSFER: { bg: 'bg-blue-50 text-blue-700 border-blue-200' },
-  CASH: { bg: 'bg-amber-50 text-amber-700 border-amber-200' },
-  CHEQUE: { bg: 'bg-purple-50 text-purple-700 border-purple-200' },
-  OTHER: { bg: 'bg-slate-50 text-slate-700 border-slate-200' },
+const METHOD_BADGES: Record<string, { bg: string; text: string; border: string }> = {
+  CARD: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+  UPI: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  BANK_TRANSFER: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  CASH: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  CHEQUE: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  OTHER: { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
 };
 
 export const PaymentsPage: React.FC = () => {
@@ -315,7 +315,7 @@ export const PaymentsPage: React.FC = () => {
                       </td>
                       <td className="py-3 px-4">
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badge.bg}`}
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badge.bg} ${badge.text} ${badge.border}`}
                         >
                           {p.method.replace('_', ' ')}
                         </span>
