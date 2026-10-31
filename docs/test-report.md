@@ -46,3 +46,4 @@
 - **Scene 5 (Billing Day & Idempotency):** Batch runner processes due subscriptions; taxes calculated via `calculateTax`; eligible discounts applied; zero double billing on `[subscriptionId, periodStart]`; missed periods caught up.
 - **Scene 6 (Discount Limits & Exhaustion):** Expired discounts (`endDate < now`), exhausted discounts (`usedCount >= usageLimit`), and inactive discounts (`isActive = false`) reliably excluded.
 - **Scene 7 (Payments & Finance Analytics):** Partial payments decrement balance and keep invoice `CONFIRMED`; full payments update status to `PAID`; overpayment rejected with HTTP 400; delinquent accounts flagged as overdue; financial KPIs and MRR calculations match database records.
+

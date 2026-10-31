@@ -99,3 +99,4 @@ This walkthrough provides an exact, step-by-step click trail for evaluating the 
    - Verify the customer only sees Acme Corporation's subscriptions and invoices.
    - Notice Admin-only navigation links (Staff, Catalog, Dashboard) are completely hidden.
    - Click **Pay Now** to settle an open invoice directly from the self-service portal.
+

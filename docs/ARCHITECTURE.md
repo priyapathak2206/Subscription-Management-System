@@ -143,3 +143,4 @@ erDiagram
   1. Composite B-Tree indexes: `invoices(status, dueDate)`, `invoices(issueDate, status)`, and `subscriptions(status, nextBillingDate)`.
   2. Replaced naive in-memory JavaScript array filtering with native PostgreSQL grouping (`TO_CHAR(issueDate, 'YYYY-MM')`).
   3. Normalized MRR computations scale sub-20ms, verified in automated benchmark testing.
+

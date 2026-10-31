@@ -32,3 +32,4 @@ This document logs integration observations and non-blocking architectural notes
 - **File:** `server/src/modules/products/`
 - **Observation:** Product model stores base `salesPrice`, and `ProductVariant` stores `extraPrice`.
 - **Recommendation:** When client-side or server-side orders select a variant, ensure the effective line unit price is computed as `product.salesPrice + (variant.extraPrice || 0)`. This has been accounted for in the billing and subscription services.
+

@@ -122,3 +122,4 @@ docker compose ps
 - **Frontend Application:** `http://localhost:5173` or `http://localhost`
 - **Backend API & Health:** `http://localhost:5000/api/health`
 - **Postgres Database:** `localhost:5432`
+
