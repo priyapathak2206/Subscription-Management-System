@@ -40,12 +40,7 @@
     "typescript": "5.4.5",
     "vitest": "^1.6.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "esbuild",
-      "prisma"
-    ]
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }
