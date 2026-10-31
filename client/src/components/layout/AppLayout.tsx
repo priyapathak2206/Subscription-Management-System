@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Package,
   Layers,
@@ -24,17 +24,45 @@ interface NavItem {
   path: string;
   icon: React.ElementType;
   badge?: string;
-  isTeammate?: boolean;
 }
 
 export const AppLayout: React.FC = () => {
   const { user, logout, isAdmin, isStaff, isCustomer } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const getPageTitle = (pathname: string): string => {
+    const segment = pathname.split('/').filter(Boolean)[0] || '';
+    switch (segment) {
+      case 'portal':
+        return 'Customer Portal';
+      case 'subscriptions':
+        return isCustomer ? 'My Subscriptions' : 'Subscriptions Management';
+      case 'invoices':
+        return isCustomer ? 'My Invoices' : 'Invoices & Billing';
+      case 'payments':
+        return isCustomer ? 'Payment History' : 'Payments & Ledger';
+      case 'products':
+        return 'Products & Variants';
+      case 'plans':
+        return 'Subscription Plans';
+      case 'taxes':
+        return 'Tax Rates';
+      case 'discounts':
+        return 'Discounts & Promos';
+      case 'staff':
+        return 'Staff Members';
+      case 'dashboard':
+        return 'Operations Dashboard';
+      default:
+        return segment ? segment.charAt(0).toUpperCase() + segment.slice(1) : 'Overview';
+    }
   };
 
   // Build navigation items based on user role
@@ -48,7 +76,6 @@ export const AppLayout: React.FC = () => {
           name: 'Dashboard',
           path: '/dashboard',
           icon: LayoutDashboard,
-          isTeammate: true,
         },
       ],
     });
@@ -64,9 +91,9 @@ export const AppLayout: React.FC = () => {
     });
 
     const billingItems: NavItem[] = [
-      { name: 'Subscriptions', path: '/subscriptions', icon: CalendarDays, isTeammate: true },
-      { name: 'Invoices', path: '/invoices', icon: FileText, isTeammate: true },
-      { name: 'Payments', path: '/payments', icon: CreditCard, isTeammate: true },
+      { name: 'Subscriptions', path: '/subscriptions', icon: CalendarDays },
+      { name: 'Invoices', path: '/invoices', icon: FileText },
+      { name: 'Payments', path: '/payments', icon: CreditCard },
     ];
     navItems.push({
       section: 'Billing & Operations',
@@ -85,10 +112,10 @@ export const AppLayout: React.FC = () => {
     navItems.push({
       section: 'Customer Portal',
       items: [
-        { name: 'My Portal', path: '/portal', icon: UserCheck, isTeammate: true },
-        { name: 'My Subscriptions', path: '/subscriptions', icon: CalendarDays, isTeammate: true },
-        { name: 'My Invoices', path: '/invoices', icon: FileText, isTeammate: true },
-        { name: 'My Payments', path: '/payments', icon: CreditCard, isTeammate: true },
+        { name: 'My Portal', path: '/portal', icon: UserCheck },
+        { name: 'My Subscriptions', path: '/subscriptions', icon: CalendarDays },
+        { name: 'My Invoices', path: '/invoices', icon: FileText },
+        { name: 'My Payments', path: '/payments', icon: CreditCard },
       ],
     });
   }
@@ -101,10 +128,10 @@ export const AppLayout: React.FC = () => {
       : 'bg-emerald-100 text-emerald-700 border-emerald-200';
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-slate-900 text-slate-300">
+    <div className="flex flex-col h-full bg-slate-900 text-slate-100 select-none">
       {/* Brand Header */}
       <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-800">
-        <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-inner">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
           <Building2 className="w-5 h-5" />
         </div>
         <div>
@@ -137,9 +164,9 @@ export const AppLayout: React.FC = () => {
                   <item.icon className="w-4 h-4 shrink-0" />
                   <span>{item.name}</span>
                 </div>
-                {item.isTeammate && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-normal border border-slate-700">
-                    Phase 2
+                {item.badge && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 font-semibold border border-indigo-400/20">
+                    {item.badge}
                   </span>
                 )}
               </NavLink>
@@ -214,8 +241,8 @@ export const AppLayout: React.FC = () => {
             <div className="flex items-center text-xs text-slate-500 font-medium">
               <span>Brightloop</span>
               <ChevronRight className="w-3.5 h-3.5 mx-1.5 text-slate-400" />
-              <span className="text-slate-800 capitalize font-semibold">
-                {window.location.pathname.replace('/', '') || 'Dashboard'}
+              <span className="text-slate-800 font-semibold">
+                {getPageTitle(location.pathname)}
               </span>
             </div>
           </div>
@@ -238,4 +265,3 @@ export const AppLayout: React.FC = () => {
     </div>
   );
 };
-
