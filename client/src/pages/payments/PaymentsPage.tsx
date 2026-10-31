@@ -11,6 +11,7 @@ import {
   Filter,
   DollarSign,
   CheckCircle,
+  Download,
 } from 'lucide-react';
 import api from '../../api/axios.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -199,6 +200,32 @@ export const PaymentsPage: React.FC = () => {
       : Math.max(0, currentInv.total - (currentInv.amountPaid || 0))
     : 0;
 
+  const exportCSV = () => {
+    if (payments.length === 0) {
+      error('No payments to export');
+      return;
+    }
+    const headers = ['Invoice', 'Customer', 'Customer Email', 'Amount', 'Method', 'Date', 'Note'];
+    const rows = payments.map((p) => [
+      p.invoice?.number || '',
+      '"' + (p.invoice?.customer?.name || '').replace(/"/g, '""') + '"',
+      p.invoice?.customer?.email || '',
+      p.amount.toFixed(2),
+      p.method,
+      p.paymentDate,
+      '"' + (p.note || '').replace(/"/g, '""') + '"',
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payments-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    success('Payments exported to CSV');
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -378,6 +405,14 @@ export const PaymentsPage: React.FC = () => {
               Next
             </button>
           </div>
+
+          <button
+            onClick={exportCSV}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-emerald-950 font-bold rounded-xl text-xs hover:bg-emerald-50 transition shadow-sm shrink-0"
+          >
+            <Download className="w-4 h-4 text-emerald-700" />
+            Export Ledger CSV
+          </button>
         </div>
       </div>
 
