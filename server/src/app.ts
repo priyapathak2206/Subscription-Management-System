@@ -59,6 +59,7 @@ export function createApp(): Express {
 
   // Modules (Billing & Reporting)
   app.use('/api/quotation-templates', templatesRoutes);
+  app.use('/api/templates', templatesRoutes);
   app.use('/api/subscriptions', subscriptionsRoutes);
   app.use('/api/invoices', invoicesRoutes);
   app.use('/api/payments', paymentsRoutes);

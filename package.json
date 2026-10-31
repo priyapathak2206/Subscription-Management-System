@@ -13,7 +13,9 @@
     "test": "npm run test --prefix server",
     "prisma:generate": "npm run prisma:generate --prefix server",
     "prisma:migrate": "npm run prisma:migrate --prefix server",
-    "prisma:seed": "npm run prisma:seed --prefix server"
+    "prisma:seed": "npm run prisma:seed --prefix server",
+    "test:unit": "npm run test:unit --prefix server",
+    "test:e2e": "npm run test:e2e --prefix server"
   },
   "keywords": [
     "subscription-management",
@@ -24,4 +26,3 @@
   "author": "Brightloop Software",
   "license": "ISC"
 }
-

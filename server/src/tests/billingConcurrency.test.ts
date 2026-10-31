@@ -17,7 +17,13 @@ describe('Task 2: Billing Concurrency Guard & Advisory Lock', () => {
       canConnectToRealDb = true;
 
       // Second client to simulate a distinct PostgreSQL session for lock contention
-      lockHoldingClient = new PrismaClient();
+      const connectionUrl =
+        process.env.NODE_ENV === 'test' && process.env.DATABASE_URL_TEST
+          ? process.env.DATABASE_URL_TEST
+          : process.env.DATABASE_URL;
+      lockHoldingClient = new PrismaClient({
+        datasources: connectionUrl ? { db: { url: connectionUrl } } : undefined,
+      });
       await lockHoldingClient.$connect();
     } catch {
       canConnectToRealDb = false;

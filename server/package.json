@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "test:unit": "vitest run src/tests",
+    "test:e2e": "vitest run tests/e2e"
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",

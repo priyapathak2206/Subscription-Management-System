@@ -20,6 +20,7 @@ router.get('/', listSubscriptions);
 router.get('/:id', getSubscriptionById);
 router.post('/', requireRole(Role.ADMIN, Role.STAFF, Role.CUSTOMER), handleCreateSubscription);
 router.post('/:id/transition', requireRole(Role.ADMIN, Role.STAFF), handleTransitionSubscription);
+router.post('/:id/status', requireRole(Role.ADMIN, Role.STAFF), handleTransitionSubscription);
 router.patch('/:id/status', requireRole(Role.ADMIN, Role.STAFF), handleTransitionSubscription);
 router.post('/:id/pause', requireRole(Role.ADMIN, Role.STAFF), handlePauseSubscription);
 router.post('/:id/resume', requireRole(Role.ADMIN, Role.STAFF), handleResumeSubscription);
