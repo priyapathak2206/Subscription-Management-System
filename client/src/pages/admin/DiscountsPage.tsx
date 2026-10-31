@@ -282,7 +282,7 @@ export const DiscountsPage: React.FC = () => {
                 </tr>
               ) : (
                 discounts.map((discount) => {
-                  const isExhausted = discount.usageLimit !== null && discount.usedCount >= discount.usageLimit;
+                  const isExhausted = discount.usageLimit != null && discount.usedCount >= discount.usageLimit;
                   return (
                     <tr key={discount.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3.5 px-4 font-semibold text-slate-900">
@@ -315,7 +315,7 @@ export const DiscountsPage: React.FC = () => {
                         {!discount.minPurchase && !discount.minQuantity && <span className="text-slate-400">None</span>}
                       </td>
                       <td className="py-3.5 px-4">
-                        {discount.usageLimit !== null ? (
+                        {discount.usageLimit != null ? (
                           <div className="space-y-1">
                             <span className="text-xs font-semibold text-slate-700">
                               {discount.usedCount} / {discount.usageLimit}
