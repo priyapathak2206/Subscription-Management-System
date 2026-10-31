@@ -85,8 +85,9 @@ export const PaymentsPage: React.FC = () => {
       if (endDate) params.endDate = endDate;
 
       const res = await api.get('/payments', { params });
-      setPayments(res.data.items || []);
-      setTotalPayments(res.data.pagination?.total || 0);
+      const items = res.data.items || res.data.payments || [];
+      setPayments(items);
+      setTotalPayments(res.data.pagination?.total ?? items.length);
     } catch {
       // Toast
     } finally {
@@ -232,20 +233,24 @@ export const PaymentsPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <CreditCard className="w-7 h-7 text-indigo-600" />
-            Payment Ledger & Transactions
+            {isAdmin || isStaff ? 'Payment Ledger & Transactions' : 'My Payments'}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Record client receipts, validate against outstanding balances, and auto-settle paid invoices.
+            {isAdmin || isStaff
+              ? 'Record client receipts, validate against outstanding balances, and auto-settle paid invoices.'
+              : 'View your transaction history and confirmed payment receipts.'}
           </p>
         </div>
 
-        <button
-          onClick={handleOpenModal}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 shadow-sm transition"
-        >
-          <Plus className="w-4 h-4" />
-          Record New Payment
-        </button>
+        {(isAdmin || isStaff) && (
+          <button
+            onClick={handleOpenModal}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 shadow-sm transition"
+          >
+            <Plus className="w-4 h-4" />
+            Record New Payment
+          </button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -303,7 +308,7 @@ export const PaymentsPage: React.FC = () => {
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
               <tr>
                 <th className="py-3 px-4">Invoice #</th>
-                <th className="py-3 px-4">Customer</th>
+                {(isAdmin || isStaff) && <th className="py-3 px-4">Customer</th>}
                 <th className="py-3 px-4">Payment Method</th>
                 <th className="py-3 px-4">Date & Time</th>
                 <th className="py-3 px-4">Note / Memo</th>
@@ -320,8 +325,18 @@ export const PaymentsPage: React.FC = () => {
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
-                    No payment transactions recorded for selected criteria.
+                  <td colSpan={isAdmin || isStaff ? 6 : 5} className="py-16 text-center text-slate-400">
+                    <div className="max-w-sm mx-auto space-y-3">
+                      <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+                        <CreditCard className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-base font-bold text-slate-800">No payment transactions found</h3>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        {isAdmin || isStaff
+                          ? 'No payments recorded matching the filter criteria. Record a new payment to get started.'
+                          : 'You do not have any recorded payment transactions yet.'}
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -332,14 +347,16 @@ export const PaymentsPage: React.FC = () => {
                       <td className="py-3 px-4 font-mono font-bold text-indigo-600">
                         {p.invoice?.number || '—'}
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">
-                          {p.invoice?.customer?.name || 'Customer'}
-                        </div>
-                        <div className="text-slate-400 text-[11px]">
-                          {p.invoice?.customer?.email}
-                        </div>
-                      </td>
+                      {(isAdmin || isStaff) && (
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-slate-900">
+                            {p.invoice?.customer?.name || 'Customer'}
+                          </div>
+                          <div className="text-slate-400 text-[11px]">
+                            {p.invoice?.customer?.email}
+                          </div>
+                        </td>
+                      )}
                       <td className="py-3 px-4">
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badge.bg} ${badge.text} ${badge.border}`}
@@ -400,7 +417,7 @@ export const PaymentsPage: React.FC = () => {
       </div>
 
       {/* RECORD PAYMENT MODAL */}
-      {isModalOpen && (
+      {isModalOpen && (isAdmin || isStaff) && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-xs">
             <div className="flex justify-between items-center mb-4">

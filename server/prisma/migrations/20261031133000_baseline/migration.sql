@@ -151,7 +151,9 @@ CREATE TABLE "quotation_template_lines" (
     "id" TEXT NOT NULL,
     "quotationTemplateId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
+    "variantId" TEXT,
     "quantity" INTEGER NOT NULL DEFAULT 1,
+    "unitPrice" DOUBLE PRECISION,
 
     CONSTRAINT "quotation_template_lines_pkey" PRIMARY KEY ("id")
 );
@@ -164,6 +166,7 @@ CREATE TABLE "subscriptions" (
     "planId" TEXT NOT NULL,
     "startDate" TIMESTAMP(3) NOT NULL,
     "expiryDate" TIMESTAMP(3),
+    "quotationExpiryDate" TIMESTAMP(3),
     "paymentTerms" TEXT,
     "status" "SubscriptionStatus" NOT NULL DEFAULT 'DRAFT',
     "nextBillingDate" TIMESTAMP(3),
@@ -193,6 +196,7 @@ CREATE TABLE "subscription_status_history" (
     "subscriptionId" TEXT NOT NULL,
     "fromStatus" "SubscriptionStatus",
     "toStatus" "SubscriptionStatus" NOT NULL,
+    "changedById" TEXT,
     "changedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "reason" TEXT,
 
@@ -215,6 +219,8 @@ CREATE TABLE "invoices" (
     "taxTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "total" DOUBLE PRECISION NOT NULL,
     "amountPaid" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "sentAt" TIMESTAMP(3),
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -276,6 +282,9 @@ CREATE INDEX "quotation_template_lines_quotationTemplateId_idx" ON "quotation_te
 CREATE INDEX "quotation_template_lines_productId_idx" ON "quotation_template_lines"("productId");
 
 -- CreateIndex
+CREATE INDEX "quotation_template_lines_variantId_idx" ON "quotation_template_lines"("variantId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "subscriptions_number_key" ON "subscriptions"("number");
 
 -- CreateIndex
@@ -283,6 +292,12 @@ CREATE INDEX "subscriptions_status_idx" ON "subscriptions"("status");
 
 -- CreateIndex
 CREATE INDEX "subscriptions_customerId_idx" ON "subscriptions"("customerId");
+
+-- CreateIndex
+CREATE INDEX "subscriptions_nextBillingDate_idx" ON "subscriptions"("nextBillingDate");
+
+-- CreateIndex
+CREATE INDEX "subscriptions_expiryDate_idx" ON "subscriptions"("expiryDate");
 
 -- CreateIndex
 CREATE INDEX "subscription_lines_subscriptionId_idx" ON "subscription_lines"("subscriptionId");
@@ -304,6 +319,9 @@ CREATE INDEX "invoices_dueDate_idx" ON "invoices"("dueDate");
 
 -- CreateIndex
 CREATE INDEX "invoices_customerId_idx" ON "invoices"("customerId");
+
+-- CreateIndex
+CREATE INDEX "invoices_periodStart_idx" ON "invoices"("periodStart");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "invoices_subscriptionId_periodStart_key" ON "invoices"("subscriptionId", "periodStart");
@@ -339,6 +357,9 @@ ALTER TABLE "quotation_template_lines" ADD CONSTRAINT "quotation_template_lines_
 ALTER TABLE "quotation_template_lines" ADD CONSTRAINT "quotation_template_lines_productId_fkey" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "quotation_template_lines" ADD CONSTRAINT "quotation_template_lines_variantId_fkey" FOREIGN KEY ("variantId") REFERENCES "product_variants"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -360,6 +381,9 @@ ALTER TABLE "subscription_lines" ADD CONSTRAINT "subscription_lines_taxId_fkey" 
 ALTER TABLE "subscription_status_history" ADD CONSTRAINT "subscription_status_history_subscriptionId_fkey" FOREIGN KEY ("subscriptionId") REFERENCES "subscriptions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "subscription_status_history" ADD CONSTRAINT "subscription_status_history_changedById_fkey" FOREIGN KEY ("changedById") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_subscriptionId_fkey" FOREIGN KEY ("subscriptionId") REFERENCES "subscriptions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -379,3 +403,4 @@ ALTER TABLE "invoice_lines" ADD CONSTRAINT "invoice_lines_taxId_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "payments" ADD CONSTRAINT "payments_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "invoices"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+

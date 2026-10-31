@@ -51,6 +51,7 @@ export async function listPayments(req: Request, res: Response) {
     ]);
 
     res.json({
+      items: payments,
       payments,
       pagination: {
         page,
@@ -124,4 +125,3 @@ export async function handlePaymentCreation(req: Request, res: Response) {
     res.status(status).json({ message: error.message || 'Payment processing failed' });
   }
 }
-

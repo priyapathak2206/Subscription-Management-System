@@ -42,7 +42,7 @@ export function createApp(): Express {
 
   // Root & Health Check
   app.get('/', (_req, res) => {
-    res.status(200).json({ name: 'Brightloop Subscription Management API', status: 'running' });
+    res.status(200).json({ name: 'Brightloop Subscription Management API', status: 'ok' });
   });
 
   app.get('/api/health', (_req, res) => {

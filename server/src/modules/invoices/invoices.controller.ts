@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../db/prisma.js';
 import { InvoiceStatus } from '@prisma/client';
-import { applyCustomerScope, resolveCustomerIdScope } from '../../utils/customerScope.js';
+import { resolveCustomerIdScope } from '../../utils/customerScope.js';
 import {
   generateInvoiceForSubscription,
   runRecurringBillingBatch,
@@ -15,19 +15,23 @@ export async function listInvoices(req: Request, res: Response) {
     const status = req.query.status as InvoiceStatus;
     const subscriptionId = req.query.subscriptionId as string;
     const search = req.query.search as string;
+    const requestedCustomerId = req.query.customerId as string;
 
-    const baseWhere: any = {};
-    if (status) baseWhere.status = status;
-    if (subscriptionId) baseWhere.subscriptionId = subscriptionId;
+    // Apply strict customer isolation scoping (throws 403 if customer accesses other accounts)
+    const scopedCustomerId = resolveCustomerIdScope(req.user as any, requestedCustomerId);
+
+    const where: any = {};
+    if (status) where.status = status;
+    if (subscriptionId) where.subscriptionId = subscriptionId;
+    if (scopedCustomerId) where.customerId = scopedCustomerId;
     if (search) {
-      baseWhere.OR = [
+      where.OR = [
         { number: { contains: search, mode: 'insensitive' } },
         { customer: { name: { contains: search, mode: 'insensitive' } } },
         { customer: { email: { contains: search, mode: 'insensitive' } } },
       ];
     }
 
-    const where = applyCustomerScope(req.user as any, baseWhere);
     const today = new Date();
 
     const [total, rawInvoices] = await Promise.all([
@@ -63,6 +67,7 @@ export async function listInvoices(req: Request, res: Response) {
     });
 
     res.json({
+      items: invoices,
       invoices,
       pagination: {
         page,
@@ -437,7 +442,7 @@ export async function printInvoice(req: Request, res: Response) {
     res.setHeader('Content-Type', 'text/html');
     res.send(html);
   } catch (error: any) {
-    res.status(500).send(`<h1>Error generating printable invoice: ${error.message}</h1>`);
+    const status = error.statusCode || 500;
+    res.status(status).send(`<h1>Error generating printable invoice: ${error.message}</h1>`);
   }
 }
-
