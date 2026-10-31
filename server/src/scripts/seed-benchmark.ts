@@ -1,10 +1,10 @@
-import { PrismaClient, SubscriptionStatus, InvoiceStatus, BillingPeriod, Role } from '@prisma/client';
+import { PrismaClient, SubscriptionStatus, InvoiceStatus, BillingPeriod, Role, PaymentMethod } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('--- Starting High-Scale Benchmark Seeding (5,000 Subs, 20,000 Invoices) ---');
+  console.log('--- Starting High-Scale Benchmark Seeding (5,000 Subs, 20,000 Invoices, 10,000 Payments) ---');
   const start = Date.now();
 
   // 1. Ensure a benchmark customer exists
@@ -37,7 +37,28 @@ async function main() {
     },
   });
 
-  // 3. Batch insert 5,000 subscriptions
+  // 3. Clean up existing benchmark records to ensure pristine counts
+  console.log('Cleaning up existing benchmark records...');
+  await prisma.payment.deleteMany({
+    where: { invoice: { customerId: benchmarkCustomer.id } },
+  });
+  await prisma.invoiceLine.deleteMany({
+    where: { invoice: { customerId: benchmarkCustomer.id } },
+  });
+  await prisma.invoice.deleteMany({
+    where: { customerId: benchmarkCustomer.id },
+  });
+  await prisma.subscriptionLine.deleteMany({
+    where: { subscription: { customerId: benchmarkCustomer.id } },
+  });
+  await prisma.subscriptionStatusHistory.deleteMany({
+    where: { subscription: { customerId: benchmarkCustomer.id } },
+  });
+  await prisma.subscription.deleteMany({
+    where: { customerId: benchmarkCustomer.id },
+  });
+
+  // 4. Batch insert 5,000 subscriptions
   console.log('Generating 5,000 subscriptions...');
   const subBatchSize = 1000;
   const totalSubs = 5000;
@@ -69,30 +90,29 @@ async function main() {
 
     await prisma.subscription.createMany({
       data: subRecords,
-      skipDuplicates: true,
     });
     console.log(` Inserted ${(b + 1) * subBatchSize} / ${totalSubs} subscriptions`);
   }
 
-  // 4. Batch insert 20,000 invoices
+  // 5. Batch insert exactly 20,000 invoices (4 per subscription across 4 months)
   console.log('Generating 20,000 invoices across subscriptions...');
-  const invBatchSize = 2000;
-  const totalInvoices = 20000;
   const today = new Date();
+  const paymentRecords: any[] = [];
+  const invRecords: any[] = [];
 
-  for (let b = 0; b < totalInvoices / invBatchSize; b++) {
-    const invRecords = [];
-    for (let i = 0; i < invBatchSize; i++) {
-      const idx = b * invBatchSize + i + 1;
-      const subId = subIds[idx % subIds.length];
-      const monthOffset = (idx % 12);
-      const periodStart = new Date(2026, monthOffset, 1);
-      const periodEnd = new Date(2026, monthOffset + 1, 1);
-      const dueDate = new Date(2026, monthOffset, 28);
-      const isOverdue = dueDate < today && idx % 3 === 0;
+  let invCount = 0;
+  for (let subIdx = 0; subIdx < totalSubs; subIdx++) {
+    const subId = subIds[subIdx];
+
+    for (let m = 0; m < 4; m++) {
+      invCount++;
+      const periodStart = new Date(2026, m, 1);
+      const periodEnd = new Date(2026, m + 1, 1);
+      const dueDate = new Date(2026, m, 28);
+      const isOverdue = dueDate < today && invCount % 3 === 0;
       const status = isOverdue
         ? InvoiceStatus.CONFIRMED
-        : idx % 4 === 0
+        : invCount % 4 === 0
         ? InvoiceStatus.DRAFT
         : InvoiceStatus.PAID;
 
@@ -100,10 +120,11 @@ async function main() {
       const taxTotal = 53.82;
       const total = 352.82;
       const amountPaid = status === InvoiceStatus.PAID ? total : isOverdue ? 50.0 : 0.0;
+      const invId = `bench-inv-${invCount.toString().padStart(6, '0')}`;
 
       invRecords.push({
-        id: `bench-inv-${idx.toString().padStart(6, '0')}`,
-        number: `INV-BENCH-${idx.toString().padStart(7, '0')}`,
+        id: invId,
+        number: `INV-BENCH-${invCount.toString().padStart(7, '0')}`,
         subscriptionId: subId,
         customerId: benchmarkCustomer.id,
         periodStart,
@@ -119,13 +140,35 @@ async function main() {
         createdAt: periodStart,
         updatedAt: periodStart,
       });
-    }
 
-    await prisma.invoice.createMany({
-      data: invRecords,
-      skipDuplicates: true,
-    });
-    console.log(` Inserted ${(b + 1) * invBatchSize} / ${totalInvoices} invoices`);
+      if (amountPaid > 0) {
+        paymentRecords.push({
+          id: `bench-pay-${invCount.toString().padStart(6, '0')}`,
+          invoiceId: invId,
+          amount: amountPaid,
+          method: PaymentMethod.BANK_TRANSFER,
+          paymentDate: dueDate,
+          note: `Benchmark payment for ${invId}`,
+          createdAt: dueDate,
+        });
+      }
+    }
+  }
+
+  // Batch insert invoices in chunks of 2,000
+  const invChunk = 2000;
+  for (let i = 0; i < invRecords.length; i += invChunk) {
+    const slice = invRecords.slice(i, i + invChunk);
+    await prisma.invoice.createMany({ data: slice });
+    console.log(` Inserted ${Math.min(i + invChunk, invRecords.length)} / ${invRecords.length} invoices`);
+  }
+
+  // Batch insert payments in chunks of 2,000
+  console.log(`Generating ${paymentRecords.length} payments...`);
+  for (let i = 0; i < paymentRecords.length; i += invChunk) {
+    const slice = paymentRecords.slice(i, i + invChunk);
+    await prisma.payment.createMany({ data: slice });
+    console.log(` Inserted ${Math.min(i + invChunk, paymentRecords.length)} / ${paymentRecords.length} payments`);
   }
 
   const elapsed = (Date.now() - start) / 1000;
@@ -140,4 +183,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

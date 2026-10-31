@@ -245,6 +245,8 @@ model Subscription {
   @@index([customerId])
   @@index([nextBillingDate])
   @@index([expiryDate])
+  @@index([status, nextBillingDate])
+  @@index([customerId, status])
   @@map("subscriptions")
 }
 
@@ -311,6 +313,9 @@ model Invoice {
   @@index([dueDate])
   @@index([customerId])
   @@index([periodStart])
+  @@index([status, dueDate])
+  @@index([issueDate])
+  @@index([customerId, status])
   @@map("invoices")
 }
 
@@ -344,5 +349,6 @@ model Payment {
   createdAt   DateTime      @default(now())
 
   @@index([invoiceId])
+  @@index([paymentDate])
   @@map("payments")
 }
