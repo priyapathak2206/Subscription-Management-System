@@ -361,6 +361,14 @@ export const PaymentsPage: React.FC = () => {
               Next
             </button>
           </div>
+
+          <button
+            onClick={exportCSV}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-emerald-950 font-bold rounded-xl text-xs hover:bg-emerald-50 transition shadow-sm shrink-0"
+          >
+            <Download className="w-4 h-4 text-emerald-700" />
+            Export Ledger CSV
+          </button>
         </div>
       </div>
 

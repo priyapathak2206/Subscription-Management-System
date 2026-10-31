@@ -1,3 +1,88 @@
+BRIGHTLOOP SOFTWARE - INVOICE STATEMENT
+Invoice Number: ${invoice.number}
+Subscription Ref: ${invoice.subscriptionNumber}
+Plan Name: ${invoice.planName}
+Billing Period: ${invoice.periodStart} to ${invoice.periodEnd}
+Issue Date: ${invoice.issueDate}
+Due Date: ${invoice.dueDate}
+Status: ${invoice.status}
+------------------------------------------------------
+LINE ITEMS:
+${invoice.lines
+  .map(
+    (l) =>
+      `- ${l.description.padEnd(40)} Qty: ${l.quantity}  Unit: $${l.unitPrice.toFixed(2)}  Amount: $${l.amount.toFixed(2)}`
+  )
+  .join('\n')}
+------------------------------------------------------
+Subtotal:        $${invoice.subtotal.toFixed(2)}
+Tax Total:       $${invoice.taxTotal.toFixed(2)}
+Discount Total: -$${invoice.discountTotal.toFixed(2)}
+------------------------------------------------------
+TOTAL AMOUNT:    $${invoice.total.toFixed(2)}
+Amount Paid:     $${invoice.amountPaid.toFixed(2)}
+Balance Due:     $${(invoice.total - invoice.amountPaid).toFixed(2)}
+Thank you for subscribing with Brightloop Software!
+    `.trim();
+
+    const blob = new Blob([invoiceContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${invoice.number}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    success(`Invoice ${invoice.number} downloaded successfully.`);
+  };
+
+  const getStatusBadge = (status: InvoiceItem['status']) => {
+    switch (status) {
+      case 'PAID':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Paid
+          </span>
+        );
+      case 'CONFIRMED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+            <Clock className="w-3.5 h-3.5 text-amber-600" /> Payment Due
+          </span>
+        );
+      case 'DRAFT':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+            <FileText className="w-3.5 h-3.5 text-slate-500" /> Draft
+          </span>
+        );
+      case 'CANCELLED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 border border-rose-200">
+            <AlertCircle className="w-3.5 h-3.5 text-rose-600" /> Cancelled
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-slate-950/10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="max-w-2xl">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-white/20 text-slate-200 backdrop-blur-md inline-block mb-3">
+              Billing & Invoices
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+              {isCustomer ? 'My Invoices & Statements' : 'Invoices & Billing Ledger'}
+            </h1>
+            <p className="text-slate-300 text-sm leading-relaxed mt-1">
+              Track issued subscription invoices, verify tax breakdowns, and download official billing statements.
+            </p>
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   FileText,
