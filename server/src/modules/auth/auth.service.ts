@@ -39,7 +39,7 @@ function generateToken(user: { id: string; email: string; role: Role }): string 
       role: user.role,
     },
     config.jwtSecret,
-    { expiresIn: config.jwtExpiresIn }
+    { expiresIn: config.jwtExpiresIn as any }
   );
 }
 

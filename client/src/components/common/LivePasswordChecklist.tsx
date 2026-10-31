@@ -72,4 +72,3 @@ export const LivePasswordChecklist: React.FC<Props> = ({ password, confirmPasswo
     </div>
   );
 };
-
