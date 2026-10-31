@@ -1,82 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard,
-  Download,
   Search,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
-  ShieldCheck,
-  Receipt,
+  Plus,
+  RefreshCw,
   X,
-  Printer,
-  Building,
-  Smartphone,
-  Banknote,
-  ArrowUpRight,
+  FileText,
+  Calendar,
+  AlertCircle,
+  Filter,
+  DollarSign,
+  CheckCircle,
+  Download,
 } from 'lucide-react';
+import api from '../../api/axios.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { useToast } from '../../context/ToastContext.js';
 
-interface PaymentRecord {
+interface Payment {
   id: string;
-  transactionRef: string;
-  invoiceNumber: string;
-  method: 'CARD' | 'UPI' | 'BANK_TRANSFER' | 'CASH' | 'OTHER';
-  methodDetail: string;
+  invoiceId: string;
   amount: number;
+  method: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'UPI' | 'CHEQUE' | 'OTHER';
   paymentDate: string;
-  status: 'COMPLETED' | 'PROCESSING' | 'FAILED';
-  note?: string;
-  customer?: { id: string; name: string; email: string };
+  note?: string | null;
+  createdAt: string;
+  invoice: {
+    id: string;
+    number: string;
+    total: number;
+    amountPaid: number;
+    status: string;
+    customer?: { id: string; name: string; email: string };
+  };
 }
 
-const INITIAL_PAYMENTS: PaymentRecord[] = [
-  {
-    id: 'pay-1',
-    transactionRef: 'TXN-984210-BL',
-    invoiceNumber: 'INV-2026-0041',
-    method: 'CARD',
-    methodDetail: 'Visa ending in •••• 4242',
-    amount: 352.82,
-    paymentDate: '2026-10-02 14:22:15',
-    status: 'COMPLETED',
-    note: 'Automated recurring billing settlement',
-  },
-  {
-    id: 'pay-2',
-    transactionRef: 'TXN-872911-BL',
-    invoiceNumber: 'INV-2026-0038',
-    method: 'BANK_TRANSFER',
-    methodDetail: 'HDFC Corporate Wire #9921',
-    amount: 194.4,
-    paymentDate: '2026-01-16 11:05:40',
-    status: 'COMPLETED',
-    note: 'Annual enterprise subscription fee',
-  },
-  {
-    id: 'pay-3',
-    transactionRef: 'TXN-761204-BL',
-    invoiceNumber: 'INV-2025-0812',
-    method: 'UPI',
-    methodDetail: 'brightloop@okaxis',
-    amount: 299.0,
-    paymentDate: '2025-12-01 09:12:33',
-    status: 'COMPLETED',
-    note: 'Monthly cloud cluster renewal',
-  },
-  {
-    id: 'pay-4',
-    transactionRef: 'TXN-650192-BL',
-    invoiceNumber: 'INV-2025-0720',
-    method: 'CARD',
-    methodDetail: 'Mastercard ending in •••• 8819',
-    amount: 299.0,
-    paymentDate: '2025-11-01 10:45:00',
-    status: 'COMPLETED',
-    note: 'Monthly cloud cluster renewal',
-  },
-];
+interface UnpaidInvoice {
+  id: string;
+  number: string;
+  total: number;
+  amountPaid: number;
+  outstanding?: number;
+  customer?: { id: string; name: string; email: string };
+}
 
 const METHOD_BADGES: Record<string, { bg: string; text: string; border: string }> = {
   CARD: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
@@ -88,114 +54,339 @@ const METHOD_BADGES: Record<string, { bg: string; text: string; border: string }
 };
 
 export const PaymentsPage: React.FC = () => {
-  const { user, isCustomer } = useAuth();
-  const { success } = useToast();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [methodFilter, setMethodFilter] = useState<string>('ALL');
-  const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
+  const { user, isAdmin, isStaff } = useAuth();
+  const { success, error } = useToast();
 
-  const filteredPayments = INITIAL_PAYMENTS.filter((p) => {
-    const matchesSearch =
-      p.transactionRef.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.methodDetail.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesMethod = methodFilter === 'ALL' || p.method === methodFilter;
-    return matchesSearch && matchesMethod;
-  });
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [totalPayments, setTotalPayments] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [methodFilter, setMethodFilter] = useState('ALL');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const totalSettled = INITIAL_PAYMENTS.filter((p) => p.status === 'COMPLETED').reduce(
-    (acc, p) => acc + p.amount,
-    0
-  );
+  // Record Payment Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [unpaidInvoices, setUnpaidInvoices] = useState<UnpaidInvoice[]>([]);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
+  const [amount, setAmount] = useState<number>(0);
+  const [method, setMethod] = useState<'CASH' | 'CARD' | 'BANK_TRANSFER' | 'UPI' | 'CHEQUE' | 'OTHER'>('CARD');
+  const [note, setNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const getMethodBadge = (method: PaymentRecord['method'], detail: string) => {
-    switch (method) {
-      case 'CARD':
-        return (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-              <CreditCard className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="font-semibold text-slate-800 block text-xs">Credit Card</span>
-              <span className="text-[11px] text-slate-400">{detail}</span>
-            </div>
-          </div>
-        );
-      case 'BANK_TRANSFER':
-        return (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Building className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="font-semibold text-slate-800 block text-xs">Bank Transfer</span>
-              <span className="text-[11px] text-slate-400">{detail}</span>
-            </div>
-          </div>
-        );
-      case 'UPI':
-        return (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <Smartphone className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="font-semibold text-slate-800 block text-xs">UPI Payment</span>
-              <span className="text-[11px] text-slate-400">{detail}</span>
-            </div>
-          </div>
-        );
-      default:
-        return (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-              <Banknote className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="font-semibold text-slate-800 block text-xs">{method}</span>
-              <span className="text-[11px] text-slate-400">{detail}</span>
-            </div>
-          </div>
-        );
+  // Fetch Payments List
+  const fetchPayments = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const params: any = { page, limit };
+      if (methodFilter !== 'ALL') params.method = methodFilter;
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+
+      const res = await api.get('/payments', { params });
+      setPayments(res.data.items || []);
+      setTotalPayments(res.data.pagination?.total || 0);
+    } catch {
+      // Toast
+    } finally {
+      setIsLoading(false);
+    }
+  }, [page, limit, methodFilter, startDate, endDate]);
+
+  useEffect(() => {
+    fetchPayments();
+  }, [fetchPayments]);
+
+  // Load unpaid invoices for the modal
+  const loadUnpaidInvoices = async () => {
+    try {
+      const res = await api.get('/invoices', {
+        params: { status: 'CONFIRMED', limit: 100 },
+      });
+      const list = (res.data.items || []).filter((inv: any) => {
+        const out =
+          inv.outstanding !== undefined
+            ? inv.outstanding
+            : Math.max(0, inv.total - (inv.amountPaid || 0));
+        return out > 0.001;
+      });
+      setUnpaidInvoices(list);
+      if (list.length > 0) {
+        setSelectedInvoiceId(list[0].id);
+        const out =
+          list[0].outstanding !== undefined
+            ? list[0].outstanding
+            : Math.max(0, list[0].total - (list[0].amountPaid || 0));
+        setAmount(Math.round(out * 100) / 100);
+      }
+    } catch (err) {
+      console.error('Failed to load eligible unpaid invoices', err);
     }
   };
 
+  const handleOpenModal = () => {
+    loadUnpaidInvoices();
+    setNote('');
+    setIsModalOpen(true);
+  };
+
+  const handleInvoiceChange = (invId: string) => {
+    setSelectedInvoiceId(invId);
+    const found = unpaidInvoices.find((i) => i.id === invId);
+    if (found) {
+      const out =
+        found.outstanding !== undefined
+          ? found.outstanding
+          : Math.max(0, found.total - (found.amountPaid || 0));
+      setAmount(Math.round(out * 100) / 100);
+    }
+  };
+
+  // Submit Payment
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInvoiceId) {
+      error('Please select an invoice to apply payment');
+      return;
+    }
+
+    const currentInv = unpaidInvoices.find((i) => i.id === selectedInvoiceId);
+    if (!currentInv) {
+      error('Selected invoice could not be verified');
+      return;
+    }
+
+    const outstanding =
+      currentInv.outstanding !== undefined
+        ? currentInv.outstanding
+        : Math.max(0, currentInv.total - (currentInv.amountPaid || 0));
+
+    if (amount <= 0) {
+      error('Payment amount must be greater than zero');
+      return;
+    }
+
+    if (amount > outstanding + 0.001) {
+      error(`Overpayment rejected: payment amount ($${amount}) exceeds remaining balance of $${outstanding.toFixed(2)}`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await api.post('/payments', {
+        invoiceId: selectedInvoiceId,
+        amount: Number(amount),
+        method,
+        note: note.trim() || undefined,
+      });
+
+      success('Payment recorded successfully');
+      setIsModalOpen(false);
+      fetchPayments();
+    } catch (err) {
+      // Toast
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const totalPages = Math.ceil(totalPayments / limit) || 1;
+  const currentInv = unpaidInvoices.find((i) => i.id === selectedInvoiceId);
+  const currentOutstanding = currentInv
+    ? currentInv.outstanding !== undefined
+      ? currentInv.outstanding
+      : Math.max(0, currentInv.total - (currentInv.amountPaid || 0))
+    : 0;
+
   const exportCSV = () => {
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      ['Transaction ID,Invoice Number,Payment Method,Amount,Date,Status']
-        .concat(
-          INITIAL_PAYMENTS.map(
-            (p) => `${p.transactionRef},${p.invoiceNumber},${p.method},${p.amount},${p.paymentDate},${p.status}`
-          )
-        )
-        .join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'payment_ledger.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    success('Payment ledger exported to CSV successfully.');
+    if (payments.length === 0) {
+      error('No payments to export');
+      return;
+    }
+    const headers = ['Invoice', 'Customer', 'Customer Email', 'Amount', 'Method', 'Date', 'Note'];
+    const rows = payments.map((p) => [
+      p.invoice?.number || '',
+      '"' + (p.invoice?.customer?.name || '').replace(/"/g, '""') + '"',
+      p.invoice?.customer?.email || '',
+      p.amount.toFixed(2),
+      p.method,
+      p.paymentDate,
+      '"' + (p.note || '').replace(/"/g, '""') + '"',
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payments-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    success('Payments exported to CSV');
   };
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-emerald-950/10">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="max-w-2xl">
-            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-white/20 text-emerald-200 backdrop-blur-md inline-block mb-3">
-              Payments & Ledger
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <CreditCard className="w-7 h-7 text-indigo-600" />
+            Payment Ledger & Transactions
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Record client receipts, validate against outstanding balances, and auto-settle paid invoices.
+          </p>
+        </div>
+
+        <button
+          onClick={handleOpenModal}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 shadow-sm transition"
+        >
+          <Plus className="w-4 h-4" />
+          Record New Payment
+        </button>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
+        {/* Method Filter */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {['ALL', 'CARD', 'UPI', 'BANK_TRANSFER', 'CASH', 'CHEQUE', 'OTHER'].map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                setMethodFilter(m);
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-xl font-medium transition ${
+                methodFilter === m
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              {m === 'ALL' ? 'All Methods' : m.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+
+        {/* Date Range Filters */}
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-1.5 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none"
+            placeholder="From"
+          />
+          <span className="text-slate-400">to</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => {
+              setEndDate(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-1.5 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none"
+            placeholder="To"
+          />
+        </div>
+      </div>
+
+      {/* Payments Table */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden text-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+              <tr>
+                <th className="py-3 px-4">Invoice #</th>
+                <th className="py-3 px-4">Customer</th>
+                <th className="py-3 px-4">Payment Method</th>
+                <th className="py-3 px-4">Date & Time</th>
+                <th className="py-3 px-4">Note / Memo</th>
+                <th className="py-3 px-4 text-right">Amount Received</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
+                    Loading payment records...
+                  </td>
+                </tr>
+              ) : payments.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                    No payment transactions recorded for selected criteria.
+                  </td>
+                </tr>
+              ) : (
+                payments.map((p) => {
+                  const badge = METHOD_BADGES[p.method] || METHOD_BADGES.OTHER;
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50/70 transition">
+                      <td className="py-3 px-4 font-mono font-bold text-indigo-600">
+                        {p.invoice?.number || '—'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-900">
+                          {p.invoice?.customer?.name || 'Customer'}
+                        </div>
+                        <div className="text-slate-400 text-[11px]">
+                          {p.invoice?.customer?.email}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badge.bg} ${badge.text} ${badge.border}`}
+                        >
+                          {p.method.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">
+                        {new Date(p.paymentDate).toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
+                        {p.note || '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold text-emerald-600 text-sm">
+                        +${p.amount.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        <div className="p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+          <div>
+            Showing {payments.length} of {totalPayments} payments
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition"
+            >
+              Previous
+            </button>
+            <span>
+              Page {page} of {totalPages}
             </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              {isCustomer ? 'My Payment History' : 'Payment Reconciliation & Ledger'}
-            </h1>
-            <p className="text-emerald-100 text-sm leading-relaxed mt-1">
-              Verify transaction timestamps, payment method authorizations, and generate official payment receipts.
-            </p>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              className="px-3 py-1 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition"
+            >
+              Next
+            </button>
           </div>
 
           <button
@@ -208,202 +399,146 @@ export const PaymentsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Total Settled</span>
-          <p className="text-2xl font-bold text-slate-900 mt-2">${totalSettled.toFixed(2)}</p>
-          <span className="text-xs text-emerald-600 font-medium mt-1 inline-block">100% Cleared payments</span>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Transactions</span>
-          <p className="text-2xl font-bold text-slate-900 mt-2">{INITIAL_PAYMENTS.length} Logs</p>
-          <span className="text-xs text-slate-500 font-medium mt-1 inline-block">Fully reconciled</span>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Default Method</span>
-          <p className="text-2xl font-bold text-indigo-600 mt-2">Visa •••• 4242</p>
-          <span className="text-xs text-slate-500 font-medium mt-1 inline-block">Auto-charge enabled</span>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Security Protocol</span>
-          <p className="text-2xl font-bold text-emerald-600 mt-2">PCI Compliant</p>
-          <span className="text-xs text-slate-500 font-medium mt-1 inline-block">End-to-end encrypted</span>
-        </div>
-      </div>
-
-      {/* Search & Filter Toolbar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search transaction ID, invoice..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-          {(['ALL', 'CARD', 'BANK_TRANSFER', 'UPI'] as const).map((method) => (
-            <button
-              key={method}
-              onClick={() => setMethodFilter(method)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
-                methodFilter === method
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {method === 'BANK_TRANSFER' ? 'Bank Transfer' : method}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Payments History Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 px-4">Transaction ID</th>
-                <th className="py-3.5 px-4">Invoice Ref</th>
-                <th className="py-3.5 px-4">Payment Method</th>
-                <th className="py-3.5 px-4">Date & Time</th>
-                <th className="py-3.5 px-4 text-right">Amount</th>
-                <th className="py-3.5 px-4 text-center">Status</th>
-                <th className="py-3.5 px-4 text-right">Receipt</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-              {filteredPayments.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
-                    No transactions match your search criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredPayments.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                      {p.transactionRef}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="font-mono font-semibold text-indigo-600 block">{p.invoiceNumber}</span>
-                      {p.note && <span className="text-[11px] text-slate-400 truncate block max-w-xs">{p.note}</span>}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {getMethodBadge(p.method, p.methodDetail)}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-500">
-                      {p.paymentDate}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-bold text-slate-900 text-sm">
-                      ${p.amount.toFixed(2)}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Settled
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => setSelectedPayment(p)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:bg-slate-100 rounded-lg text-xs font-semibold text-slate-700 transition"
-                      >
-                        <Receipt className="w-3.5 h-3.5 text-emerald-600" />
-                        Receipt
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Payment Receipt Modal */}
-      {selectedPayment && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+      {/* RECORD PAYMENT MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-xs">
+            <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                  <Receipt className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <CreditCard className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Payment Receipt</h3>
-                  <p className="text-xs text-slate-500 font-mono">{selectedPayment.transactionRef}</p>
-                </div>
+                <h3 className="text-base font-bold text-slate-900">Record Invoice Payment</h3>
               </div>
               <button
-                onClick={() => setSelectedPayment(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Printable Receipt Card */}
-            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4 text-xs">
-              <div className="text-center pb-3 border-b border-slate-200">
-                <h4 className="font-extrabold text-sm text-slate-900 tracking-tight">Brightloop Software</h4>
-                <p className="text-[11px] text-slate-500">Official Electronic Receipt</p>
-                <div className="mt-2 text-2xl font-black text-slate-900">${selectedPayment.amount.toFixed(2)}</div>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Payment Confirmed
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Select Unpaid Invoice */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Select Unpaid / Open Invoice *
+                </label>
+                {unpaidInvoices.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+                    No open confirmed invoices with outstanding balance found.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedInvoiceId}
+                    onChange={(e) => handleInvoiceChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    required
+                  >
+                    {unpaidInvoices.map((inv) => {
+                      const out =
+                        inv.outstanding !== undefined
+                          ? inv.outstanding
+                          : Math.max(0, inv.total - (inv.amountPaid || 0));
+                      return (
+                        <option key={inv.id} value={inv.id}>
+                          {inv.number} - {inv.customer?.name} (Due: ${out.toFixed(2)})
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+              </div>
+
+              {/* Outstanding Badge Preview */}
+              {currentInv && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+                  <div className="flex justify-between text-slate-500">
+                    <span>Total Amount:</span>
+                    <span className="font-semibold text-slate-800">${currentInv.total.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Previously Settled:</span>
+                    <span className="font-semibold text-emerald-600">
+                      ${(currentInv.amountPaid || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-200 pt-1 font-bold">
+                    <span className="text-slate-700">Remaining Balance:</span>
+                    <span className="text-rose-600">${currentOutstanding.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Amount */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Payment Amount ($) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={currentOutstanding}
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none font-bold text-slate-900"
+                  required
+                />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Cannot exceed max outstanding balance (${currentOutstanding.toFixed(2)}).
                 </span>
               </div>
 
-              <div className="space-y-2 text-slate-600">
-                <div className="flex justify-between">
-                  <span>Transaction ID:</span>
-                  <span className="font-mono font-semibold text-slate-900">{selectedPayment.transactionRef}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Invoice Number:</span>
-                  <span className="font-mono font-semibold text-indigo-600">{selectedPayment.invoiceNumber}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Payment Method:</span>
-                  <span className="font-medium text-slate-900">{selectedPayment.methodDetail}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Date & Timestamp:</span>
-                  <span className="font-medium text-slate-900">{selectedPayment.paymentDate}</span>
-                </div>
-                {selectedPayment.note && (
-                  <div className="flex justify-between">
-                    <span>Description:</span>
-                    <span className="font-medium text-slate-900">{selectedPayment.note}</span>
-                  </div>
-                )}
+              {/* Payment Method */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Payment Method *</label>
+                <select
+                  value={method}
+                  onChange={(e) => setMethod(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  required
+                >
+                  <option value="CARD">Credit / Debit Card</option>
+                  <option value="UPI">UPI Transfer</option>
+                  <option value="BANK_TRANSFER">Bank Wire / ACH</option>
+                  <option value="CASH">Cash</option>
+                  <option value="CHEQUE">Cheque</option>
+                  <option value="OTHER">Other</option>
+                </select>
               </div>
-            </div>
 
-            <div className="pt-2 flex justify-end gap-2">
-              <button
-                onClick={() => setSelectedPayment(null)}
-                className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  window.print();
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 transition"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                Print Receipt
-              </button>
-            </div>
+              {/* Note */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Reference Note (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Wire confirmation #, slip number"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 border border-slate-200 rounded-xl font-semibold hover:bg-slate-50 text-slate-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || unpaidInvoices.length === 0}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-sm transition"
+                >
+                  {isSubmitting ? 'Recording...' : `Record Payment ($${amount})`}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
