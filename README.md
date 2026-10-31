@@ -1,9 +1,9 @@
 # Brightloop Software — Subscription Management System
 
-[![CI/CD Tests](https://img.shields.io/badge/tests-100%20passed-brightgreen.svg)](#running-tests)
+[![CI/CD Tests](https://img.shields.io/badge/tests-116%20passed-brightgreen.svg)](#running-tests)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-blue.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/typescript-%5E5.4.5-blue.svg)](https://www.typescriptlang.org)
-[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](#docker-quick-start)
+[![PostgreSQL](https://img.shields.io/badge/postgresql-17-blue.svg)](https://www.postgresql.org/)
 
 An enterprise-grade, multi-tenant **Subscription Management & Recurring Invoicing Platform** built with React 18, Vite, Express, TypeScript, Prisma ORM, and PostgreSQL.
 
@@ -27,172 +27,149 @@ Modern recurring revenue businesses struggle with:
 
 ---
 
-## 2. Tech Stack
+## 2. Tech Stack & Ports
 
 - **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, React Router v6, Axios, Lucide Icons.
-- **Backend:** Node.js 20, Express.js, TypeScript, Prisma ORM, PostgreSQL 16.
+- **Backend:** Node.js 20+, Express.js, TypeScript, Prisma ORM, PostgreSQL 17.
 - **Security & RBAC:** JWT Bearer tokens, Helmet HTTP headers, CORS whitelisting, Express rate limiting, Zod validation, bcryptjs password hashing.
 - **Automation & Scheduling:** node-cron for automated recurring billing runs and daily midnight subscription auto-close.
-- **Testing & Quality:** Vitest test suite with 100% pass rate across 100 comprehensive tests.
-- **Containerization:** Multi-stage Dockerfiles and Docker Compose orchestration.
+- **Testing & Quality:** Vitest test suite with 100% pass rate across 116 comprehensive tests.
+
+### Default Ports
+| Component | URL / Port | Description |
+|---|---|---|
+| **Backend API** | `http://localhost:5000` | Express REST API server |
+| **API Health** | `http://localhost:5000/api/health` | Health check endpoint |
+| **Frontend App** | `http://localhost:5173` | Vite React development server |
+| **Database** | `localhost:5432` | PostgreSQL database (`brightloop`) |
 
 ---
 
-## 3. Features per Role
+## 3. Local Setup & Run Instructions
 
-| Role | Access Scope & Capabilities |
-|---|---|
-| **Admin** | • Global catalog management (Products, Variants, Subscription Plans, Tax Rates, Discounts)<br>• Staff member creation and role provisioning<br>• Trigger batch recurring billing engine (`POST /api/invoices/run-billing`)<br>• Executive Finance Dashboard with 6 real-time KPIs and 12-month revenue trajectory<br>• Overdue accounts tracking and automated email reminders |
-| **Staff** | • Quotation template definition and subscription creation<br>• State machine progression (`Confirm Quotation`, `Activate Contract`, `Close Subscription`)<br>• Invoice management (Confirm, Cancel, Email Dispatch, Printable Receipts)<br>• Payment recording with overpayment guard validation |
-| **Customer** | • Self-service Customer Portal with active subscription cards<br>• View billing history, issue dates, and due dates<br>• Download / Print official tax receipts<br>• One-click online payment settlement directly from portal<br>• Strict multi-tenant isolation: completely blocked from accessing other customer records |
+Follow these exact commands in order:
 
----
-
-## 4. Application Preview
-
-```
-+-------------------------------------------------------------------------------------------------------+
-|  Brightloop Executive Dashboard                                      [ 2026-01-01  to  2026-10-31 ]   |
-+-------------------------------------------------------------------------------------------------------+
-|  [Active Subs]        [MRR]           [Total Invoiced]   [Collected]     [Outstanding]    [Overdue]   |
-|     5,000          $148,250.00          $1,240,500.00    $1,180,000.00     $60,500.00     $18,400.00  |
-+-------------------------------------------------------------------------------------------------------+
-|  12-Month Invoiced vs. Collected Revenue Trajectory                                                   |
-|   $150k |        █ █        █ █        █ █        █ █        █ █        █ █        █ █        █ █    |
-|   $100k |   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █    |
-|    $50k |   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █   █ █  █ █    |
-|         +-------------------------------------------------------------------------------------------+ |
-|             Jan    Feb     Mar    Apr     May    Jun     Jul    Aug     Sep    Oct     Nov    Dec     |
-+-------------------------------------------------------------------------------------------------------+
-```
-
----
-
-## 5. Team Split & Responsibilities
-
-- **Person A (Milestone 1 — Foundation & Catalog):**
-  - Database schema architecture (`server/prisma/schema.prisma`)
-  - Authentication & JWT token infrastructure with single-use password reset tokens
-  - RBAC authorization middleware (`requireRole`)
-  - Catalog subsystems: Products, Variants, Plans, Taxes, Discounts
-  - Shared utilities: `customerScope.ts`, `taxCalculator.ts`, `discountEngine.ts`, `password.ts`
-- **Person B (Milestone 2 — Billing, Reporting & Deployment):**
-  - Quotation Templates CRUD and sequential `SUB-YYYY-00001` numbering generator
-  - Subscription Finite State Machine with audit trail history logs
-  - Idempotent recurring billing engine (`POST /api/invoices/run-billing`)
-  - Payments ledger with real-time overpayment protection (HTTP 400 rejection)
-  - Sub-2s executive analytics engine (`GET /api/reports/summary`, `GET /api/reports/overdue`)
-  - Full React 18 frontend pages (`SubscriptionsPage`, `InvoicesPage`, `PaymentsPage`, `PortalPage`, `DashboardPage`)
-  - Production Docker orchestration, 100-test automated verification suite, and demo kit
-
----
-
-## 6. Quick Start
-
-### Option A: One-Command Docker Setup (Recommended)
-
+### 1. Server Setup
 ```bash
-# Clone the repository
-git clone https://github.com/priyapathak2206/Subscription-Management-System.git
-cd Subscription-Management-System
-
-# Start PostgreSQL, Express API, and Nginx Client
-docker compose up -d --build
-
-# Run migrations and seed default demo data
-docker compose exec server npx prisma migrate deploy
-docker compose exec server npm run prisma:seed
-```
-
-- **Frontend App:** [http://localhost:5173](http://localhost:5173) (or [http://localhost](http://localhost))
-- **Backend API:** [http://localhost:5000/api](http://localhost:5000/api)
-- **API Health Check:** [http://localhost:5000/api/health](http://localhost:5000/api/health)
-
----
-
-### Option B: Manual Local Setup
-
-#### Prerequisites
-- Node.js >= 20.x
-- PostgreSQL 16+ running locally on port 5432
-
-#### 1. Server Setup
-```bash
+# Navigate to the server folder
 cd server
+
+# 1. Install server dependencies
 npm install
 
-# Configure environment
-cp .env.example .env
+# 2. Configure environment variables (ensure DATABASE_URL and JWT_SECRET are set)
+# cp .env.example .env
 
-# Generate Prisma Client & Run Migrations
+# 3. Generate Prisma Client
 npx prisma generate
-npx prisma migrate dev --name init
 
-# Seed Demo Data (Admin, Staff, Customers, Catalog)
-npm run prisma:seed
+# 4. Deploy database migrations
+npx prisma migrate deploy
 
-# Start Server in Development Mode
+# 5. Seed idempotent demo data (Admin, Staff, Customers, Catalog)
+npx prisma db seed
+
+# 6. Start the backend API in development mode
 npm run dev
 ```
+The server will log:
+```
+ Connected to PostgreSQL database successfully.
+[Cron] Cron jobs registered successfully (auto-close @ 00:00, recurring billing @ 01:00).
+ Brightloop Subscription Management Server listening on port 5000
+   Health: http://localhost:5000/api/health
+   Frontend URL: http://localhost:5173
+```
 
-#### 2. Client Setup
+### 2. Client Setup
+In a new terminal window:
 ```bash
-cd ../client
+# Navigate to the client folder
+cd client
+
+# 1. Install client dependencies
 npm install
+
+# 2. Start the Vite development server
 npm run dev
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 7. Demo Credentials
+## 4. Demo Logins
 
-| Role | Email Address | Password | Intended Test Flow |
+The database seed provides pre-configured demo credentials for testing role-based workflows:
+
+| Role | Email Address | Password | Permissions & Views |
 |---|---|---|---|
-| **Admin** | `admin@brightloop.com` | `Admin@1234` | Catalog, batch billing runner, executive financial KPIs |
-| **Staff** | `staff@brightloop.com` | `Staff@1234` | Quotation to subscription conversion, payment entry |
-| **Customer** | `cust1@acmecorp.com` | `Customer@1234` | Self-service portal, view invoices, online payments |
+| **Admin** | `admin@brightloop.com` | `Admin@1234` | Full access: Catalog (Products, Variants, Plans, Taxes, Discounts), Staff management, manual billing runs, financial executive KPI dashboards. |
+| **Staff** | `staff@brightloop.com` | `Staff@1234` | Operational access: Quotation templates, customer subscriptions, invoice confirmation, email sending, payment entry. |
+| **Customer** | `cust1@acmecorp.com` | `Customer@1234` | Customer portal: View own subscriptions, view & download invoices, submit payments. Completely isolated from other customer records and staff endpoints. |
 
-Detailed click-by-click instructions are available in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
+Additional customer accounts seeded: `cust2@globex.com`, `cust3@initech.com` (password: `Customer@1234`).
 
 ---
 
-## 8. Running Tests
+## 5. Running Tests & Verifications
 
-Run the full automated test suite (including the 7-scene end-to-end integration scenario):
+Run the automated test suite in the server:
 
 ```bash
 cd server
 npm test
 ```
-
+All 14 test files and 116 tests will run and pass:
 ```
-Test Files  13 passed (13)
-     Tests  100 passed (100)
-  Duration  1.67s
+ Test Files  14 passed (14)
+      Tests  116 passed (116)
 ```
 
-Detailed test metrics are documented in [`docs/test-report.md`](docs/test-report.md).
+To run TypeScript verification:
+- Server: `cd server && npx tsc --noEmit`
+- Client: `cd client && npm run build`
 
 ---
 
-## 9. Performance Benchmark (5,000 Subs & 20,000 Invoices)
+## 6. Troubleshooting
 
-```bash
-cd server
-# Seed synthetic high-volume dataset
-npm run tsx src/scripts/seed-benchmark.ts
+### 1. Port 5000 in Use (`EADDRINUSE`)
+If starting the server fails with `Error: listen EADDRINUSE: address already in use :::5000`:
+1. Find the process listening on port 5000:
+   ```cmd
+   netstat -ano | findstr :5000 | findstr LISTENING
+   ```
+2. Inspect the process using the reported PID:
+   ```cmd
+   tasklist /FI "PID eq <PID>"
+   ```
+3. If it is an orphaned `node.exe` from a prior run, terminate only that specific PID:
+   ```cmd
+   taskkill /PID <PID> /F
+   ```
+   *(Never run `taskkill /IM node.exe` as it terminates all other Node processes).*
 
-# Measure API latency
-npm run tsx src/scripts/run-benchmark.ts
-```
+### 2. Prisma EPERM on `query_engine-windows.dll.node`
+If Prisma commands fail with `EPERM: operation not permitted, unlink '...query_engine-windows.dll.node'`:
+- Windows locks `.dll` and `.node` binaries while they are loaded in memory by an active Node.js server process.
+- Stop or kill the running Node.js server process holding the database connection first, then re-run `npx prisma generate` or `npx prisma migrate deploy`.
 
-| Endpoint | Data Volume | Response Time | SLA Limit | SLA Status |
-|---|:---:|:---:|:---:|:---:|
-| `GET /api/reports/summary` | 20k Invoices | **~42 ms** | 2,000 ms | **PASS** |
-| `GET /api/reports/overdue` | 20k Invoices | **~18 ms** | 2,000 ms | **PASS** |
-| `GET /api/subscriptions` | 5k Subscriptions | **~12 ms** | 2,000 ms | **PASS** |
-| `GET /api/invoices` | 20k Invoices | **~15 ms** | 2,000 ms | **PASS** |
-| `GET /api/payments` | 10k Payments | **~9 ms** | 2,000 ms | **PASS** |
-
-See [`docs/performance.md`](docs/performance.md) for full benchmark metrics.
+### 3. Missing `quotationExpiryDate` Column / Schema Out of Sync
+If queries to `subscriptions` fail with a message that column `quotationExpiryDate` does not exist:
+1. Ensure Prisma client is up to date:
+   ```bash
+   cd server
+   npx prisma generate
+   ```
+2. Apply the baseline migration:
+   ```bash
+   npx prisma migrate deploy
+   ```
+   Or synchronize the schema directly:
+   ```bash
+   npx prisma db push
+   ```
+3. Verify status:
+   ```bash
+   npx prisma migrate status
+   ```

@@ -137,11 +137,6 @@ export const AppLayout: React.FC = () => {
                   <item.icon className="w-4 h-4 shrink-0" />
                   <span>{item.name}</span>
                 </div>
-                {item.isTeammate && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-normal border border-slate-700">
-                    Phase 2
-                  </span>
-                )}
               </NavLink>
             ))}
           </div>

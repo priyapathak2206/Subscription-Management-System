@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../db/prisma.js';
 import { SubscriptionStatus } from '@prisma/client';
-import { applyCustomerScope, resolveCustomerIdScope } from '../../utils/customerScope.js';
+import { resolveCustomerIdScope } from '../../utils/customerScope.js';
 import {
   createSubscription,
   transitionSubscriptionStatus,
@@ -14,20 +14,22 @@ export async function listSubscriptions(req: Request, res: Response) {
     const status = req.query.status as SubscriptionStatus;
     const planId = req.query.planId as string;
     const search = req.query.search as string;
+    const requestedCustomerId = req.query.customerId as string;
 
-    const baseWhere: any = {};
-    if (status) baseWhere.status = status;
-    if (planId) baseWhere.planId = planId;
+    // Apply strict multi-tenant customer isolation (throws 403 if customer accesses other accounts)
+    const scopedCustomerId = resolveCustomerIdScope(req.user as any, requestedCustomerId);
+
+    const where: any = {};
+    if (status) where.status = status;
+    if (planId) where.planId = planId;
+    if (scopedCustomerId) where.customerId = scopedCustomerId;
     if (search) {
-      baseWhere.OR = [
+      where.OR = [
         { number: { contains: search, mode: 'insensitive' } },
         { customer: { name: { contains: search, mode: 'insensitive' } } },
         { customer: { email: { contains: search, mode: 'insensitive' } } },
       ];
     }
-
-    // Apply strict multi-tenant customer isolation
-    const where = applyCustomerScope(req.user as any, baseWhere);
 
     const [total, subscriptions] = await Promise.all([
       prisma.subscription.count({ where }),
@@ -54,6 +56,7 @@ export async function listSubscriptions(req: Request, res: Response) {
     ]);
 
     res.json({
+      items: subscriptions,
       subscriptions,
       pagination: {
         page,
@@ -99,7 +102,7 @@ export async function getSubscriptionById(req: Request, res: Response) {
       return res.status(404).json({ message: 'Subscription not found' });
     }
 
-    // Customer isolation check
+    // Customer isolation check: throws 403 Forbidden if not allowed
     resolveCustomerIdScope(req.user as any, sub.customerId);
 
     res.json({ subscription: sub });
@@ -166,4 +169,3 @@ export async function handleTransitionSubscription(req: Request, res: Response) 
     res.status(status).json({ message: error.message || 'Transition failed' });
   }
 }
-

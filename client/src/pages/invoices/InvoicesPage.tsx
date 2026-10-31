@@ -109,8 +109,9 @@ export const InvoicesPage: React.FC = () => {
       if (search.trim()) params.search = search.trim();
 
       const res = await api.get('/invoices', { params });
-      setInvoices(res.data.items || []);
-      setTotalInvoices(res.data.pagination?.total || 0);
+      const items = res.data.items || res.data.invoices || [];
+      setInvoices(items);
+      setTotalInvoices(res.data.pagination?.total ?? items.length);
     } catch {
       // Axios toast handler
     } finally {
@@ -253,10 +254,12 @@ export const InvoicesPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <FileText className="w-7 h-7 text-indigo-600" />
-            Invoices & Billing Engine
+            {isAdmin || isStaff ? 'Invoices & Billing Engine' : 'My Invoices'}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Deterministic, idempotent invoice generation with automatic tax computation and eligible discount engine.
+            {isAdmin || isStaff
+              ? 'Deterministic, idempotent invoice generation with automatic tax computation and eligible discount engine.'
+              : 'Review your billing statements, payment due dates and download receipts.'}
           </p>
         </div>
 
@@ -280,7 +283,7 @@ export const InvoicesPage: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
         {/* Status Pills */}
         <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-          {['ALL', 'DRAFT', 'CONFIRMED', 'PAID', 'CANCELLED'].map((st) => (
+          {(isAdmin || isStaff ? ['ALL', 'DRAFT', 'CONFIRMED', 'PAID', 'CANCELLED'] : ['ALL', 'CONFIRMED', 'PAID', 'CANCELLED']).map((st) => (
             <button
               key={st}
               onClick={() => {
@@ -303,7 +306,11 @@ export const InvoicesPage: React.FC = () => {
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search invoice # or customer..."
+            placeholder={
+              isAdmin || isStaff
+                ? 'Search invoice # or customer...'
+                : 'Search by invoice number'
+            }
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -322,7 +329,7 @@ export const InvoicesPage: React.FC = () => {
               <tr>
                 <th className="py-3 px-4">Invoice #</th>
                 <th className="py-3 px-4">Subscription</th>
-                <th className="py-3 px-4">Customer</th>
+                {(isAdmin || isStaff) && <th className="py-3 px-4">Customer</th>}
                 <th className="py-3 px-4">Issue / Due Date</th>
                 <th className="py-3 px-4 text-right">Total</th>
                 <th className="py-3 px-4 text-right">Outstanding</th>
@@ -340,8 +347,18 @@ export const InvoicesPage: React.FC = () => {
                 </tr>
               ) : invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    No invoices found matching criteria.
+                  <td colSpan={isAdmin || isStaff ? 8 : 7} className="py-16 text-center text-slate-400">
+                    <div className="max-w-sm mx-auto space-y-3">
+                      <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-base font-bold text-slate-800">No invoices found</h3>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        {isAdmin || isStaff
+                          ? 'No invoices match your current search or filter criteria.'
+                          : 'You do not have any invoices or billing statements at this time.'}
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -365,10 +382,16 @@ export const InvoicesPage: React.FC = () => {
                       <td className="py-3 px-4 font-mono text-slate-600">
                         {inv.subscription?.number || '—'}
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">{inv.customer?.name || 'Customer'}</div>
-                        <div className="text-slate-400 text-[11px]">{inv.customer?.email}</div>
-                      </td>
+                      {(isAdmin || isStaff) && (
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-slate-900">
+                            {inv.customer?.name || 'Customer'}
+                          </div>
+                          <div className="text-slate-400 text-[11px]">
+                            {inv.customer?.email}
+                          </div>
+                        </td>
+                      )}
                       <td className="py-3 px-4">
                         <div className="text-slate-700">{new Date(inv.issueDate).toLocaleDateString()}</div>
                         <div className="text-slate-400 text-[11px]">

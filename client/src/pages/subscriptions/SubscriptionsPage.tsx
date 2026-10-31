@@ -185,8 +185,9 @@ export const SubscriptionsPage: React.FC = () => {
       if (search.trim()) params.search = search.trim();
 
       const res = await api.get('/subscriptions', { params });
-      setSubscriptions(res.data.items || []);
-      setTotalSubs(res.data.pagination?.total || 0);
+      const items = res.data.items || res.data.subscriptions || [];
+      setSubscriptions(items);
+      setTotalSubs(res.data.pagination?.total ?? items.length);
     } catch {
       // Axios interceptor shows error toast
     } finally {
@@ -196,6 +197,9 @@ export const SubscriptionsPage: React.FC = () => {
 
   // Fetch Auxiliary Data (Plans, Products, Customers, Templates)
   const fetchAuxData = useCallback(async () => {
+    if (!isAdmin && !isStaff) {
+      return;
+    }
     try {
       const [pRes, prodRes, tmplRes] = await Promise.all([
         api.get('/plans', { params: { limit: 100 } }),
@@ -397,25 +401,27 @@ export const SubscriptionsPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <CalendarDays className="w-7 h-7 text-indigo-600" />
-            Subscription Lifecycle Management
+            {isAdmin || isStaff ? 'Subscription Lifecycle Management' : 'My Subscriptions'}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Manage quotation templates, strict state transitions, customer contracts, and automated renewals.
+            {isAdmin || isStaff
+              ? 'Manage quotation templates, strict state transitions, customer contracts, and automated renewals.'
+              : 'View your plans, billing dates and renewal status.'}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Tab Pill Switcher */}
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-semibold text-slate-600">
-            <button
-              onClick={() => setActiveTab('subscriptions')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                activeTab === 'subscriptions' ? 'bg-white text-slate-900 shadow-sm' : 'hover:text-slate-900'
-              }`}
-            >
-              Subscriptions
-            </button>
-            {(isAdmin || isStaff) && (
+          {(isAdmin || isStaff) && (
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-semibold text-slate-600">
+              <button
+                onClick={() => setActiveTab('subscriptions')}
+                className={`px-3 py-1.5 rounded-lg transition ${
+                  activeTab === 'subscriptions' ? 'bg-white text-slate-900 shadow-sm' : 'hover:text-slate-900'
+                }`}
+              >
+                Subscriptions
+              </button>
               <button
                 onClick={() => setActiveTab('templates')}
                 className={`px-3 py-1.5 rounded-lg transition ${
@@ -424,19 +430,21 @@ export const SubscriptionsPage: React.FC = () => {
               >
                 Quotation Templates ({templates.length})
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          <button
-            onClick={() => {
-              resetForm();
-              setIsCreateOpen(true);
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 shadow-sm transition"
-          >
-            <Plus className="w-4 h-4" />
-            New Subscription
-          </button>
+          {(isAdmin || isStaff) && (
+            <button
+              onClick={() => {
+                resetForm();
+                setIsCreateOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 shadow-sm transition"
+            >
+              <Plus className="w-4 h-4" />
+              New Subscription
+            </button>
+          )}
         </div>
       </div>
 
@@ -446,7 +454,10 @@ export const SubscriptionsPage: React.FC = () => {
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
             {/* Status Tabs */}
             <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-              {['ALL', 'DRAFT', 'QUOTATION', 'CONFIRMED', 'ACTIVE', 'CLOSED'].map((st) => (
+              {(isAdmin || isStaff
+                ? ['ALL', 'DRAFT', 'QUOTATION', 'CONFIRMED', 'ACTIVE', 'CLOSED']
+                : ['ALL', 'CONFIRMED', 'ACTIVE', 'CLOSED']
+              ).map((st) => (
                 <button
                   key={st}
                   onClick={() => {
@@ -469,7 +480,11 @@ export const SubscriptionsPage: React.FC = () => {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search number or customer..."
+                placeholder={
+                  isAdmin || isStaff
+                    ? 'Search number or customer...'
+                    : 'Search by subscription number'
+                }
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -487,7 +502,7 @@ export const SubscriptionsPage: React.FC = () => {
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
                   <tr>
                     <th className="py-3 px-4">Subscription #</th>
-                    <th className="py-3 px-4">Customer</th>
+                    {(isAdmin || isStaff) && <th className="py-3 px-4">Customer</th>}
                     <th className="py-3 px-4">Plan & Billing</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">Next Billing Date</th>
@@ -504,8 +519,18 @@ export const SubscriptionsPage: React.FC = () => {
                     </tr>
                   ) : subscriptions.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400">
-                        No subscriptions found matching the active filters.
+                      <td colSpan={isAdmin || isStaff ? 6 : 5} className="py-16 text-center text-slate-400">
+                        <div className="max-w-sm mx-auto space-y-3">
+                          <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+                            <CalendarDays className="w-6 h-6" />
+                          </div>
+                          <h3 className="text-base font-bold text-slate-800">No subscriptions found</h3>
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            {isAdmin || isStaff
+                              ? 'No subscriptions match your current filters. Create a new subscription or adjust your search.'
+                              : 'You do not have any active subscriptions yet.'}
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
@@ -516,10 +541,12 @@ export const SubscriptionsPage: React.FC = () => {
                           <td className="py-3 px-4 font-mono font-semibold text-indigo-600">
                             {sub.number}
                           </td>
-                          <td className="py-3 px-4">
-                            <div className="font-semibold text-slate-900">{sub.customer?.name || 'N/A'}</div>
-                            <div className="text-slate-400 text-[11px]">{sub.customer?.email}</div>
-                          </td>
+                          {(isAdmin || isStaff) && (
+                            <td className="py-3 px-4">
+                              <div className="font-semibold text-slate-900">{sub.customer?.name || 'N/A'}</div>
+                              <div className="text-slate-400 text-[11px]">{sub.customer?.email}</div>
+                            </td>
+                          )}
                           <td className="py-3 px-4">
                             <div className="font-medium text-slate-800">{sub.plan?.name}</div>
                             <div className="text-slate-400 text-[11px]">
@@ -904,7 +931,7 @@ export const SubscriptionsPage: React.FC = () => {
       )}
 
       {/* CREATE SUBSCRIPTION MODAL */}
-      {isCreateOpen && (
+      {isCreateOpen && (isAdmin || isStaff) && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
@@ -1150,7 +1177,7 @@ export const SubscriptionsPage: React.FC = () => {
       )}
 
       {/* CREATE TEMPLATE MODAL */}
-      {isTemplateModalOpen && (
+      {isTemplateModalOpen && (isAdmin || isStaff) && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center mb-4">

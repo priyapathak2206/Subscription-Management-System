@@ -12,11 +12,22 @@ export interface ReportFilterOptions {
 export async function getSummaryKPIs(filters: ReportFilterOptions) {
   const today = new Date();
   const start = filters.startDate ? new Date(filters.startDate) : undefined;
-  const end = filters.endDate ? new Date(filters.endDate) : undefined;
+  let end: Date | undefined = undefined;
+  if (filters.endDate) {
+    end = new Date(filters.endDate);
+    if (!isNaN(end.getTime()) && typeof filters.endDate === 'string' && filters.endDate.length === 10) {
+      end.setHours(23, 59, 59, 999);
+    }
+  }
 
   // 1. Active Subscriptions Count & MRR Calculation
+  const isSubscriptionStatus =
+    filters.status && Object.values(SubscriptionStatus).includes(filters.status as any);
+
   const subWhere: Prisma.SubscriptionWhereInput = {
-    status: SubscriptionStatus.ACTIVE,
+    ...(isSubscriptionStatus
+      ? { status: filters.status as SubscriptionStatus }
+      : { status: SubscriptionStatus.ACTIVE }),
     ...(filters.customerId && { customerId: filters.customerId }),
     ...(filters.planId && { planId: filters.planId }),
   };
@@ -25,6 +36,7 @@ export async function getSummaryKPIs(filters: ReportFilterOptions) {
     where: subWhere,
     select: {
       id: true,
+      status: true,
       plan: {
         select: {
           price: true,
@@ -43,9 +55,13 @@ export async function getSummaryKPIs(filters: ReportFilterOptions) {
 
   let mrr = 0;
   for (const sub of activeSubscriptions) {
-    const subTotal = sub.lines.length > 0
-      ? sub.lines.reduce((sum, l) => sum + l.amount, 0)
-      : sub.plan.price;
+    // Only calculate MRR for active contracts
+    if (sub.status !== SubscriptionStatus.ACTIVE) continue;
+
+    const subTotal =
+      sub.lines.length > 0
+        ? sub.lines.reduce((sum, l) => sum + (l.amount || 0), 0)
+        : sub.plan.price;
 
     switch (sub.plan.billingPeriod) {
       case BillingPeriod.DAILY:
@@ -60,16 +76,20 @@ export async function getSummaryKPIs(filters: ReportFilterOptions) {
       case BillingPeriod.YEARLY:
         mrr += subTotal / 12;
         break;
+      default:
+        mrr += subTotal;
     }
   }
   mrr = Math.round(mrr * 100) / 100;
 
   // 2. High-Performance SQL Aggregates for Invoices
-  // Total Invoiced, Revenue Collected, and Outstanding
+  const isInvoiceStatus =
+    filters.status && Object.values(InvoiceStatus).includes(filters.status as any);
+
   const invoiceWhere: Prisma.InvoiceWhereInput = {
     ...(filters.customerId && { customerId: filters.customerId }),
     ...(filters.planId && { subscription: { planId: filters.planId } }),
-    ...(filters.status && { status: filters.status as InvoiceStatus }),
+    ...(isInvoiceStatus && { status: filters.status as InvoiceStatus }),
     ...(start || end
       ? {
           issueDate: {
@@ -96,6 +116,7 @@ export async function getSummaryKPIs(filters: ReportFilterOptions) {
   const outstandingAmount = Math.max(0, Math.round((totalInvoiced - revenueCollected) * 100) / 100);
 
   // 3. Overdue Invoices Aggregate
+  // Overdue rule: status NOT IN [PAID, CANCELLED] and dueDate < today
   const overdueWhere: Prisma.InvoiceWhereInput = {
     ...invoiceWhere,
     status: {
@@ -123,6 +144,21 @@ export async function getSummaryKPIs(filters: ReportFilterOptions) {
   const overdueAmount = Math.max(0, Math.round((overdueTotal - overduePaid) * 100) / 100);
 
   // 4. Revenue by Month Time-Series (Fast SQL Group By)
+  const customerFilter = filters.customerId
+    ? Prisma.sql`AND "customerId" = ${filters.customerId}`
+    : Prisma.empty;
+  const planFilter = filters.planId
+    ? Prisma.sql`AND "subscriptionId" IN (SELECT "id" FROM "subscriptions" WHERE "planId" = ${filters.planId})`
+    : Prisma.empty;
+  const dateFilter =
+    start && end
+      ? Prisma.sql`AND "issueDate" >= ${start} AND "issueDate" <= ${end}`
+      : start
+      ? Prisma.sql`AND "issueDate" >= ${start}`
+      : end
+      ? Prisma.sql`AND "issueDate" <= ${end}`
+      : Prisma.empty;
+
   const revenueByMonthRaw: Array<{ month: string; invoiced: number; collected: number }> =
     await prisma.$queryRaw`
       SELECT 
@@ -130,8 +166,10 @@ export async function getSummaryKPIs(filters: ReportFilterOptions) {
         ROUND(COALESCE(SUM("total"), 0)::numeric, 2)::float AS invoiced,
         ROUND(COALESCE(SUM("amountPaid"), 0)::numeric, 2)::float AS collected
       FROM "invoices"
-      WHERE "status" != 'CANCELLED'
-        ${filters.customerId ? Prisma.sql`AND "customerId" = ${filters.customerId}` : Prisma.empty}
+      WHERE "status" != CAST('CANCELLED' AS "InvoiceStatus")
+        ${customerFilter}
+        ${planFilter}
+        ${dateFilter}
       GROUP BY TO_CHAR("issueDate", 'YYYY-MM')
       ORDER BY month ASC
       LIMIT 12;
@@ -154,14 +192,35 @@ export async function getSummaryKPIs(filters: ReportFilterOptions) {
 
 export async function getOverdueInvoicesList(filters: ReportFilterOptions, page = 1, limit = 20) {
   const today = new Date();
+  const start = filters.startDate ? new Date(filters.startDate) : undefined;
+  let end: Date | undefined = undefined;
+  if (filters.endDate) {
+    end = new Date(filters.endDate);
+    if (!isNaN(end.getTime()) && typeof filters.endDate === 'string' && filters.endDate.length === 10) {
+      end.setHours(23, 59, 59, 999);
+    }
+  }
+
+  const isInvoiceStatus =
+    filters.status && Object.values(InvoiceStatus).includes(filters.status as any);
+
   const where: Prisma.InvoiceWhereInput = {
     ...(filters.customerId && { customerId: filters.customerId }),
-    status: {
-      notIn: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
-    },
+    ...(filters.planId && { subscription: { planId: filters.planId } }),
+    ...(isInvoiceStatus
+      ? { status: filters.status as InvoiceStatus }
+      : { status: { notIn: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED] } }),
     dueDate: {
       lt: today,
     },
+    ...(start || end
+      ? {
+          issueDate: {
+            ...(start && { gte: start }),
+            ...(end && { lte: end }),
+          },
+        }
+      : {}),
   };
 
   const [total, rawInvoices] = await Promise.all([
@@ -190,10 +249,12 @@ export async function getOverdueInvoicesList(filters: ReportFilterOptions, page 
       customer: inv.customer,
       subscriptionNumber: inv.subscription?.number,
       planName: inv.subscription?.plan?.name,
-      dueDate: inv.dueDate,
+      dueDate: inv.dueDate.toISOString(),
+      issueDate: inv.issueDate.toISOString(),
       daysOverdue,
       total: inv.total,
       amountPaid: inv.amountPaid,
+      outstanding: balance,
       outstandingBalance: balance,
       status: inv.status,
     };
@@ -205,8 +266,92 @@ export async function getOverdueInvoicesList(filters: ReportFilterOptions, page 
       page,
       limit,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit) || 1,
     },
   };
 }
 
+export async function getCustomerSummary(customerId: string) {
+  const today = new Date();
+
+  const [activeSubscriptionCount, invoiceAggs, overdueAggs, recentInvoices, recentSubscriptions] =
+    await Promise.all([
+      prisma.subscription.count({
+        where: {
+          customerId,
+          status: SubscriptionStatus.ACTIVE,
+        },
+      }),
+      prisma.invoice.aggregate({
+        where: { customerId },
+        _sum: { total: true, amountPaid: true },
+        _count: { id: true },
+      }),
+      prisma.invoice.aggregate({
+        where: {
+          customerId,
+          status: { notIn: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED] },
+          dueDate: { lt: today },
+        },
+        _sum: { total: true, amountPaid: true },
+        _count: { id: true },
+      }),
+      prisma.invoice.findMany({
+        where: { customerId },
+        orderBy: { issueDate: 'desc' },
+        take: 5,
+        include: {
+          subscription: { select: { number: true, plan: { select: { name: true } } } },
+        },
+      }),
+      prisma.subscription.findMany({
+        where: { customerId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: {
+          plan: { select: { name: true, price: true, billingPeriod: true } },
+        },
+      }),
+    ]);
+
+  const totalInvoiced = Math.round((invoiceAggs._sum.total || 0) * 100) / 100;
+  const revenueCollected = Math.round((invoiceAggs._sum.amountPaid || 0) * 100) / 100;
+  const outstandingAmount = Math.max(0, Math.round((totalInvoiced - revenueCollected) * 100) / 100);
+
+  const overdueCount = overdueAggs._count.id || 0;
+  const overdueTotal = overdueAggs._sum.total || 0;
+  const overduePaid = overdueAggs._sum.amountPaid || 0;
+  const overdueAmount = Math.max(0, Math.round((overdueTotal - overduePaid) * 100) / 100);
+
+  return {
+    activeSubscriptionCount,
+    totalInvoiced,
+    revenueCollected,
+    totalPaid: revenueCollected,
+    outstandingAmount,
+    outstandingBalance: outstandingAmount,
+    overdueInvoiceCount: overdueCount,
+    overdueTotalAmount: overdueAmount,
+    recentInvoices: recentInvoices.map((inv) => ({
+      id: inv.id,
+      number: inv.number,
+      issueDate: inv.issueDate.toISOString(),
+      dueDate: inv.dueDate.toISOString(),
+      total: inv.total,
+      amountPaid: inv.amountPaid,
+      outstanding: Math.max(0, Math.round((inv.total - inv.amountPaid) * 100) / 100),
+      status: inv.status,
+      planName: inv.subscription?.plan?.name,
+    })),
+    recentSubscriptions: recentSubscriptions.map((sub) => ({
+      id: sub.id,
+      number: sub.number,
+      planName: sub.plan.name,
+      price: sub.plan.price,
+      billingPeriod: sub.plan.billingPeriod,
+      status: sub.status,
+      startDate: sub.startDate.toISOString(),
+      nextBillingDate: sub.nextBillingDate?.toISOString(),
+    })),
+  };
+}

@@ -14,11 +14,10 @@ const router = Router();
 
 router.use(authenticate);
 
-router.get('/', listQuotationTemplates);
-router.get('/:id', getQuotationTemplateById);
+router.get('/', requireRole(Role.ADMIN, Role.STAFF), listQuotationTemplates);
+router.get('/:id', requireRole(Role.ADMIN, Role.STAFF), getQuotationTemplateById);
 router.post('/', requireRole(Role.ADMIN, Role.STAFF), createQuotationTemplate);
 router.put('/:id', requireRole(Role.ADMIN, Role.STAFF), updateQuotationTemplate);
 router.delete('/:id', requireRole(Role.ADMIN, Role.STAFF), deleteQuotationTemplate);
 
 export default router;
-

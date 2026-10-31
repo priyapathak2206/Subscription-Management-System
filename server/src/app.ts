@@ -40,7 +40,11 @@ export function createApp(): Express {
   // General API Rate Limiting
   app.use('/api', apiRateLimiter);
 
-  // Health Check
+  // Root and Health Check
+  app.get('/', (_req, res) => {
+    res.status(200).json({ name: 'Brightloop Subscription Management API', status: 'ok' });
+  });
+
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
