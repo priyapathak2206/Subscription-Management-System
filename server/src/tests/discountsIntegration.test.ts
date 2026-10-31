@@ -7,6 +7,7 @@ describe('Discount Auto-Application during Invoice Generation', () => {
     const lines = [
       { productId: 'prod-saas-enterprise', quantity: 1, unitPrice: 500, amount: 500 },
     ];
+    const subtotal = 500;
 
     const discount = {
       id: 'disc-promo-20',
@@ -25,24 +26,22 @@ describe('Discount Auto-Application during Invoice Generation', () => {
 
     const eligible = getEligibleDiscounts([discount], lines, {
       date: new Date('2026-06-15'),
-      appliesTo: DiscountAppliesTo.SUBSCRIPTION,
+      subtotal,
     });
 
     expect(eligible).toHaveLength(1);
 
-    const discountAmount = applyDiscount(eligible[0], lines);
+    const result = applyDiscount(subtotal, eligible[0]);
     // 20% of 500 = 100
-    expect(discountAmount).toBe(100);
-
-    const subtotal = 500;
-    const finalAmount = Math.max(0, subtotal - discountAmount);
-    expect(finalAmount).toBe(400);
+    expect(result.discountAmount).toBe(100);
+    expect(result.finalAmount).toBe(400);
   });
 
   it('correctly caps fixed amount discount at total invoice subtotal', () => {
     const lines = [
       { productId: 'prod-starter', quantity: 1, unitPrice: 30, amount: 30 },
     ];
+    const subtotal = 30;
 
     const discount = {
       id: 'disc-fixed-50',
@@ -59,11 +58,12 @@ describe('Discount Auto-Application during Invoice Generation', () => {
       isActive: true,
     };
 
-    const eligible = getEligibleDiscounts([discount], lines);
+    const eligible = getEligibleDiscounts([discount], lines, { subtotal });
     expect(eligible).toHaveLength(1);
 
-    const discountAmount = applyDiscount(eligible[0], lines);
-    expect(discountAmount).toBe(30); // Capped at subtotal 30, cannot make total negative
+    const result = applyDiscount(subtotal, eligible[0]);
+    // Capped at subtotal 30, cannot make total negative
+    expect(result.discountAmount).toBe(30);
+    expect(result.finalAmount).toBe(0);
   });
 });
-

@@ -7,7 +7,6 @@ describe('Invoicing Engine & Idempotency Guarantee', () => {
     const subId = 'sub-test-id-123';
     const periodStart = new Date('2026-11-01T00:00:00Z');
 
-    // Simulate existing invoice already generated for this exact cycle
     const mockExistingInvoice = {
       id: 'inv-existing-001',
       number: 'INV-2026-00001',
@@ -17,17 +16,39 @@ describe('Invoicing Engine & Idempotency Guarantee', () => {
       status: 'CONFIRMED',
     };
 
-    // Spy on prisma.invoice.findUnique to simulate database unique constraint lookup
+    const txSpy = vi.spyOn(prisma, '$transaction').mockImplementation(async (fn: any) => {
+      return fn(prisma);
+    });
+
     const findUniqueSpy = vi.spyOn(prisma.invoice, 'findUnique').mockResolvedValue(mockExistingInvoice as any);
 
     const result = await generateInvoiceForSubscription(subId, periodStart);
 
     expect(result.skipped).toBe(true);
-    expect(result.reason).toContain('already exists');
+    expect(result.reason).toContain('already generated');
     expect(result.invoice).toBeDefined();
     expect(result.invoice?.number).toBe('INV-2026-00001');
 
     findUniqueSpy.mockRestore();
+    txSpy.mockRestore();
+  });
+
+  it('gracefully handles concurrent database P2002 unique constraint conflicts', async () => {
+    const subId = 'sub-test-conflict';
+    const periodStart = new Date('2026-11-01T00:00:00Z');
+
+    const p2002Error: any = new Error('Unique constraint failed on the fields: (`subscriptionId`,`periodStart`)');
+    p2002Error.code = 'P2002';
+
+    const txSpy = vi.spyOn(prisma, '$transaction').mockRejectedValue(p2002Error);
+
+    const result = await generateInvoiceForSubscription(subId, periodStart);
+
+    expect(result.skipped).toBe(true);
+    expect(result.created).toBe(false);
+    expect(result.reason).toContain('Concurrent conflict');
+
+    txSpy.mockRestore();
   });
 
   it('computes payment dueDate correctly from payment terms', () => {
@@ -63,4 +84,3 @@ describe('Invoicing Engine & Idempotency Guarantee', () => {
     expect(net30.getDate()).toBe(31);
   });
 });
-

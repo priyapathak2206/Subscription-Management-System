@@ -5,17 +5,26 @@ import { resolveCustomerIdScope, applyCustomerScope } from '../utils/customerSco
 describe('Customer Multi-Tenant Isolation & Role Scoping', () => {
   const customerUser = {
     id: 'cust-uuid-111',
+    name: 'Customer One',
+    email: 'cust1@example.com',
     role: Role.CUSTOMER,
+    isActive: true,
   };
 
   const adminUser = {
     id: 'admin-uuid-999',
+    name: 'Admin User',
+    email: 'admin@example.com',
     role: Role.ADMIN,
+    isActive: true,
   };
 
   const staffUser = {
     id: 'staff-uuid-888',
+    name: 'Staff User',
+    email: 'staff@example.com',
     role: Role.STAFF,
+    isActive: true,
   };
 
   it('restricts customer role strictly to their own customer ID', () => {
@@ -27,7 +36,7 @@ describe('Customer Multi-Tenant Isolation & Role Scoping', () => {
   it('rejects customer attempting to access another customer ID with 403 Forbidden', () => {
     expect(() => {
       resolveCustomerIdScope(customerUser, 'cust-uuid-222');
-    }).toThrow(/Forbidden/);
+    }).toThrow(/Customers may only access their own data/i);
   });
 
   it('allows customer to query explicitly for their own customer ID', () => {
@@ -49,7 +58,7 @@ describe('Customer Multi-Tenant Isolation & Role Scoping', () => {
 
   it('correctly applies customer scoping into Prisma where clauses', () => {
     const baseWhere = { status: 'ACTIVE' };
-    const scopedWhere = applyCustomerScope(baseWhere, customerUser);
+    const scopedWhere = applyCustomerScope(customerUser, baseWhere);
 
     expect(scopedWhere).toEqual({
       status: 'ACTIVE',
@@ -57,4 +66,3 @@ describe('Customer Multi-Tenant Isolation & Role Scoping', () => {
     });
   });
 });
-
