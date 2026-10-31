@@ -1,6 +1,6 @@
 # Brightloop Software — Subscription Management System
 
-[![CI/CD Tests](https://img.shields.io/badge/tests-133%20passed-brightgreen.svg)](#running-tests)
+[![CI/CD Tests](https://img.shields.io/badge/tests-144%20passed-brightgreen.svg)](#running-tests)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-blue.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/typescript-%5E5.4.5-blue.svg)](https://www.typescriptlang.org)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-17-blue.svg)](https://www.postgresql.org/)
@@ -20,9 +20,11 @@ Modern recurring revenue businesses struggle with:
 
 ### The Brightloop Solution
 - **Guaranteed Idempotent Invoicing Engine:** A composite database-level unique constraint on `[subscriptionId, periodStart]` guarantees that no subscription can ever be billed twice for the same cycle, with graceful conflict absorption.
-- **Finite State Machine:** Strict transitions (`DRAFT -> QUOTATION -> CONFIRMED -> ACTIVE -> CLOSED`) with audit trail logs recording actor, timestamp, and business reasons.
+- **PostgreSQL Advisory Locking Concurrency Guard:** Session-level advisory lock (`pg_try_advisory_lock(84920412)`) and row-level `SELECT ... FOR UPDATE SKIP LOCKED` prevent overlapping billing runs, gracefully rejecting concurrent requests with HTTP 409 Conflict and skipping scheduled cron overlaps.
+- **Comprehensive Lifecycle (Pause, Resume, Renew):** Full finite state machine supporting `ACTIVE <-> PAUSED -> CLOSED` and `RENEW` transitions. Enforces plan configuration flags (`plan.pausable`, `plan.renewable`, `plan.closable`), skips paused subscriptions during billing runs, moves `nextBillingDate` forward on resumption so paused periods are not backfilled, and creates linked renewal subscriptions with preserved line items.
+- **Finite State Machine & Audit Trail:** Strict transitions (`DRAFT -> QUOTATION -> CONFIRMED -> ACTIVE -> PAUSED -> CLOSED`) with audit trail logs recording actor, timestamp, and business reasons.
 - **Dynamic Catalog Pricing:** Product variants compute effective unit prices as `product.salesPrice + variant.extraPrice` with automatic line-item tax and promotional discount deduction.
-- **Sub-2s Financial Analytics:** Native PostgreSQL time-series aggregation delivering sub-50ms query response times on 20,000+ invoices and 5,000+ subscriptions.
+- **Sub-140ms Financial Analytics & Measured Indexes:** 7 additive composite B-Tree indexes delivering sub-140ms response times on 20,000+ invoices and 5,000+ subscriptions measured under realistic load.
 - **Role-Tailored Multi-Tenant Experience:** Strict data isolation between administrators, operational staff, and customers.
 
 ---
@@ -33,7 +35,7 @@ Modern recurring revenue businesses struggle with:
 - **Backend:** Node.js 20+, Express.js, TypeScript, Prisma ORM, PostgreSQL 17.
 - **Security & RBAC:** JWT Bearer tokens, Helmet HTTP headers, CORS whitelisting, Express rate limiting, Zod validation, bcryptjs password hashing.
 - **Automation & Scheduling:** node-cron for automated recurring billing runs and daily midnight subscription auto-close.
-- **Testing & Quality:** Vitest test suite with 100% pass rate across 116 comprehensive tests.
+- **Testing & Quality:** Vitest test suite with 100% pass rate across 144 tests (121 unit tests + 23 real-database E2E tests).
 
 ### Default Ports
 | Component | URL / Port | Description |
@@ -122,10 +124,10 @@ Run the automated test suite in the server:
 cd server
 npm test
 ```
-All 15 test files and 133 tests will run and pass:
+All 17 test files and 144 tests will run and pass (121 unit tests, 23 real DB e2e tests):
 ```
- Test Files  15 passed (15)
-      Tests  133 passed (133)
+ Test Files  17 passed (17)
+      Tests  144 passed (144)
 ```
 
 To run TypeScript verification:

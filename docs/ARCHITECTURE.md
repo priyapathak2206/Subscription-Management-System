@@ -67,6 +67,7 @@ erDiagram
     
     SUBSCRIPTION ||--|{ SUBSCRIPTION_LINE : "contains"
     SUBSCRIPTION ||--o{ SUBSCRIPTION_STATUS_HISTORY : "tracks transitions"
+    SUBSCRIPTION ||--o{ SUBSCRIPTION : "renews into"
     SUBSCRIPTION ||--o{ INVOICE : "generates recurring"
     
     INVOICE ||--|{ INVOICE_LINE : "contains"
@@ -94,6 +95,7 @@ erDiagram
         datetime expiryDate
         datetime nextBillingDate
         string paymentTerms
+        string renewedFromId FK
     }
 
     INVOICE {
@@ -143,4 +145,21 @@ erDiagram
   1. Composite B-Tree indexes: `invoices(status, dueDate)`, `invoices(issueDate, status)`, and `subscriptions(status, nextBillingDate)`.
   2. Replaced naive in-memory JavaScript array filtering with native PostgreSQL grouping (`TO_CHAR(issueDate, 'YYYY-MM')`).
   3. Normalized MRR computations scale sub-20ms, verified in automated benchmark testing.
+
+### Decision 4: Lifecycle Extensions — Pause, Resume, and Renewal Chains
+- **Challenge:** Subscriptions require real-world suspension without canceling, resuming without backfilling missed periods, and renewing into linked contracts while preserving audit histories.
+- **Solution:**
+  1. Extended `SubscriptionStatus` enum with `PAUSED`.
+  2. Guarded transitions: `ACTIVE -> PAUSED` and `PAUSED -> ACTIVE` are strictly permitted only if `plan.pausable === true` (otherwise returning HTTP 400).
+  3. Paused subscriptions are automatically skipped by the recurring billing engine.
+  4. Upon resumption (`POST /api/subscriptions/:id/resume`), the subscription's `nextBillingDate` is dynamically shifted forward by the pause duration so suspended periods are never backfilled.
+  5. Renewals (`POST /api/subscriptions/:id/renew`) are guarded by `plan.renewable`, allowed from `ACTIVE` or `CLOSED`, and instantiate a new linked contract via self-relation `renewedFromId`, copying lines and pricing while anchoring `startDate` to previous expiry.
+
+### Decision 5: Distributed Concurrency Guard — PostgreSQL Advisory Locks
+- **Challenge:** Multiple application replicas or concurrent user triggers of `POST /api/invoices/run-billing` alongside the scheduled cron runner can cause race conditions and lock contention.
+- **Solution:**
+  1. Implemented session-level advisory locking via `SELECT pg_try_advisory_lock(84920412)`.
+  2. If another billing run is active, the advisory lock immediately returns `false`. The API responds with `HTTP 409 Conflict`, while the cron job logs `[Cron] Billing run already in progress. Skipping cron execution.` and skips cleanly.
+  3. Inside each subscription invoice transaction, `SELECT id FROM subscriptions WHERE id = ... FOR UPDATE SKIP LOCKED` prevents row-level races.
+  4. The advisory lock is guaranteed to release in a `finally` block via `SELECT pg_advisory_unlock(84920412)`.
 
