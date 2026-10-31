@@ -49,7 +49,9 @@ interface Subscription {
   number: string;
   customerId: string;
   planId: string;
-  status: 'DRAFT' | 'QUOTATION' | 'CONFIRMED' | 'ACTIVE' | 'CLOSED';
+  status: 'DRAFT' | 'QUOTATION' | 'CONFIRMED' | 'ACTIVE' | 'PAUSED' | 'CLOSED';
+  renewedFromId?: string | null;
+  renewedFrom?: { id: string; number: string; status: string } | null;
   startDate: string;
   expiryDate?: string | null;
   quotationExpiryDate?: string | null;

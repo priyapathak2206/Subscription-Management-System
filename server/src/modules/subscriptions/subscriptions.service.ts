@@ -6,7 +6,8 @@ export const ALLOWED_TRANSITIONS: Record<SubscriptionStatus, SubscriptionStatus[
   [SubscriptionStatus.DRAFT]: [SubscriptionStatus.QUOTATION, SubscriptionStatus.CLOSED],
   [SubscriptionStatus.QUOTATION]: [SubscriptionStatus.CONFIRMED, SubscriptionStatus.CLOSED],
   [SubscriptionStatus.CONFIRMED]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CLOSED],
-  [SubscriptionStatus.ACTIVE]: [SubscriptionStatus.CLOSED],
+  [SubscriptionStatus.ACTIVE]: [SubscriptionStatus.PAUSED, SubscriptionStatus.CLOSED],
+  [SubscriptionStatus.PAUSED]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CLOSED],
   [SubscriptionStatus.CLOSED]: [], // Closed subscriptions cannot transition unless renewed
 };
 
@@ -218,6 +219,8 @@ export async function createSubscription(
           },
           orderBy: { changedAt: 'desc' },
         },
+        renewedFrom: { select: { id: true, number: true, status: true } },
+        renewals: { select: { id: true, number: true, status: true } },
       },
     });
 
@@ -260,7 +263,16 @@ export async function transitionSubscriptionStatus(
       throw err;
     }
 
-    // 2. Honor plan flags: closable early
+    // 2. Honor plan flags: pausable
+    if (targetStatus === SubscriptionStatus.PAUSED && currentStatus === SubscriptionStatus.ACTIVE) {
+      if (sub.plan.pausable === false) {
+        const err: any = new Error(`Plan "${sub.plan.name}" does not permit pausing subscriptions`);
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    // Honor plan flags: closable early
     if (targetStatus === SubscriptionStatus.CLOSED && currentStatus === SubscriptionStatus.ACTIVE) {
       if (sub.plan.closable === false) {
         if (sub.expiryDate && new Date() < new Date(sub.expiryDate)) {
@@ -273,14 +285,32 @@ export async function transitionSubscriptionStatus(
       }
     }
 
-    // 3. Update subscription status
+    // 3. Billing date forward adjustment on resume so paused periods are not backfilled
+    let updatedNextBillingDate = sub.nextBillingDate;
+    if (currentStatus === SubscriptionStatus.PAUSED && targetStatus === SubscriptionStatus.ACTIVE) {
+      const lastPause = await tx.subscriptionStatusHistory.findFirst({
+        where: { subscriptionId, toStatus: SubscriptionStatus.PAUSED },
+        orderBy: { changedAt: 'desc' },
+      });
+      const pausedAt = lastPause ? new Date(lastPause.changedAt) : sub.updatedAt;
+      const pauseDurationMs = Math.max(0, Date.now() - pausedAt.getTime());
+
+      const baseDate = sub.nextBillingDate ? new Date(sub.nextBillingDate) : new Date();
+      let shifted = new Date(baseDate.getTime() + pauseDurationMs);
+      if (shifted <= new Date()) {
+        shifted = new Date();
+      }
+      updatedNextBillingDate = shifted;
+    } else if (targetStatus === SubscriptionStatus.ACTIVE && !sub.nextBillingDate) {
+      updatedNextBillingDate = new Date();
+    }
+
+    // 4. Update subscription status
     const updated = await tx.subscription.update({
       where: { id: subscriptionId },
       data: {
         status: targetStatus,
-        ...(targetStatus === SubscriptionStatus.ACTIVE && !sub.nextBillingDate && {
-          nextBillingDate: new Date(),
-        }),
+        nextBillingDate: updatedNextBillingDate,
       },
       include: {
         customer: { select: { id: true, name: true, email: true } },
@@ -298,10 +328,12 @@ export async function transitionSubscriptionStatus(
           },
           orderBy: { changedAt: 'desc' },
         },
+        renewedFrom: { select: { id: true, number: true, status: true } },
+        renewals: { select: { id: true, number: true, status: true } },
       },
     });
 
-    // 4. Record audit history
+    // 5. Record audit history
     await tx.subscriptionStatusHistory.create({
       data: {
         subscriptionId,
@@ -316,3 +348,139 @@ export async function transitionSubscriptionStatus(
   });
 }
 
+export async function pauseSubscription(
+  subscriptionId: string,
+  actor: { id: string; role: Role },
+  reason?: string
+) {
+  return transitionSubscriptionStatus(
+    subscriptionId,
+    SubscriptionStatus.PAUSED,
+    actor,
+    reason || 'Subscription paused by staff/admin'
+  );
+}
+
+export async function resumeSubscription(
+  subscriptionId: string,
+  actor: { id: string; role: Role },
+  reason?: string
+) {
+  return transitionSubscriptionStatus(
+    subscriptionId,
+    SubscriptionStatus.ACTIVE,
+    actor,
+    reason || 'Subscription resumed by staff/admin'
+  );
+}
+
+export async function renewSubscription(
+  subscriptionId: string,
+  actor: { id: string; role: Role }
+) {
+  return prisma.$transaction(async (tx) => {
+    const sub = await tx.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        plan: true,
+        lines: true,
+      },
+    });
+
+    if (!sub) {
+      const err: any = new Error('Subscription not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (sub.plan.renewable === false) {
+      const err: any = new Error(`Plan "${sub.plan.name}" does not permit renewal`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (sub.status !== SubscriptionStatus.ACTIVE && sub.status !== SubscriptionStatus.CLOSED) {
+      const err: any = new Error('Only active or closed subscriptions can be renewed');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // New start date = old expiry date, or now if no expiry
+    const startDate = sub.expiryDate ? new Date(sub.expiryDate) : new Date();
+    let expiryDate: Date | null = null;
+    if (sub.expiryDate && sub.startDate) {
+      const durationMs = new Date(sub.expiryDate).getTime() - new Date(sub.startDate).getTime();
+      expiryDate = new Date(startDate.getTime() + durationMs);
+    }
+
+    const subNumber = await generateSubscriptionNumber(tx);
+
+    const renewedSub = await tx.subscription.create({
+      data: {
+        number: subNumber,
+        customerId: sub.customerId,
+        planId: sub.planId,
+        renewedFromId: sub.id,
+        startDate,
+        expiryDate,
+        paymentTerms: sub.paymentTerms,
+        status: SubscriptionStatus.ACTIVE,
+        nextBillingDate: startDate,
+        lines: {
+          create: sub.lines.map((l) => ({
+            productId: l.productId,
+            variantId: l.variantId,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            taxId: l.taxId,
+            amount: l.amount,
+          })),
+        },
+        history: {
+          create: {
+            fromStatus: null,
+            toStatus: SubscriptionStatus.ACTIVE,
+            changedById: actor.id,
+            reason: `Renewed from ${sub.number}`,
+          },
+        },
+      },
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+        plan: true,
+        lines: {
+          include: {
+            product: true,
+            variant: true,
+            tax: true,
+          },
+        },
+        history: {
+          include: {
+            changedBy: { select: { id: true, name: true, email: true, role: true } },
+          },
+          orderBy: { changedAt: 'desc' },
+        },
+        renewedFrom: {
+          select: { id: true, number: true, status: true },
+        },
+        renewals: {
+          select: { id: true, number: true, status: true },
+        },
+      },
+    });
+
+    // Record audit history on the original subscription
+    await tx.subscriptionStatusHistory.create({
+      data: {
+        subscriptionId: sub.id,
+        fromStatus: sub.status,
+        toStatus: sub.status,
+        changedById: actor.id,
+        reason: `Renewed into ${renewedSub.number}`,
+      },
+    });
+
+    return renewedSub;
+  });
+}

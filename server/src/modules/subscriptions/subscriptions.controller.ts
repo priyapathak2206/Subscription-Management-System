@@ -5,6 +5,9 @@ import { resolveCustomerIdScope } from '../../utils/customerScope.js';
 import {
   createSubscription,
   transitionSubscriptionStatus,
+  pauseSubscription,
+  resumeSubscription,
+  renewSubscription,
 } from './subscriptions.service.js';
 
 export async function listSubscriptions(req: Request, res: Response) {
@@ -45,6 +48,7 @@ export async function listSubscriptions(req: Request, res: Response) {
               tax: true,
             },
           },
+          renewedFrom: { select: { id: true, number: true, status: true } },
           _count: {
             select: { invoices: true },
           },
@@ -95,6 +99,12 @@ export async function getSubscriptionById(req: Request, res: Response) {
         invoices: {
           orderBy: { createdAt: 'desc' },
         },
+        renewedFrom: {
+          select: { id: true, number: true, status: true },
+        },
+        renewals: {
+          select: { id: true, number: true, status: true },
+        },
       },
     });
 
@@ -139,7 +149,8 @@ export async function handleCreateSubscription(req: Request, res: Response) {
 export async function handleTransitionSubscription(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const { targetStatus, reason } = req.body;
+    const targetStatus = req.body.targetStatus || req.body.status;
+    const reason = req.body.reason;
 
     if (!targetStatus) {
       return res.status(400).json({ message: 'targetStatus is required' });
@@ -167,5 +178,40 @@ export async function handleTransitionSubscription(req: Request, res: Response) 
   } catch (error: any) {
     const status = error.statusCode || 400;
     res.status(status).json({ message: error.message || 'Transition failed' });
+  }
+}
+
+export async function handlePauseSubscription(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const subscription = await pauseSubscription(id, req.user as any, reason);
+    res.json({ message: 'Subscription paused successfully', subscription });
+  } catch (error: any) {
+    const status = error.statusCode || 400;
+    res.status(status).json({ message: error.message || 'Failed to pause subscription' });
+  }
+}
+
+export async function handleResumeSubscription(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const subscription = await resumeSubscription(id, req.user as any, reason);
+    res.json({ message: 'Subscription resumed successfully', subscription });
+  } catch (error: any) {
+    const status = error.statusCode || 400;
+    res.status(status).json({ message: error.message || 'Failed to resume subscription' });
+  }
+}
+
+export async function handleRenewSubscription(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const subscription = await renewSubscription(id, req.user as any);
+    res.status(201).json({ message: 'Subscription renewed successfully', subscription });
+  } catch (error: any) {
+    const status = error.statusCode || 400;
+    res.status(status).json({ message: error.message || 'Failed to renew subscription' });
   }
 }

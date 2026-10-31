@@ -143,6 +143,14 @@ export async function generateInvoiceForSubscription(
       throw new Error(`Subscription ${subscriptionId} not found`);
     }
 
+    if (sub.status === SubscriptionStatus.PAUSED) {
+      return {
+        created: false,
+        skipped: true,
+        reason: 'Subscription is paused. Billing skipped.',
+      };
+    }
+
     const issueDate = new Date();
     const periodEnd = calculatePeriodEnd(periodStart, sub.plan.billingPeriod);
     const dueDate = calculateDueDate(issueDate, sub.paymentTerms);
