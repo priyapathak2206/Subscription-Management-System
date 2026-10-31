@@ -1,6 +1,6 @@
 # Brightloop Software — Subscription Management System
 
-[![CI/CD Tests](https://img.shields.io/badge/tests-116%20passed-brightgreen.svg)](#running-tests)
+[![CI/CD Tests](https://img.shields.io/badge/tests-133%20passed-brightgreen.svg)](#running-tests)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-blue.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/typescript-%5E5.4.5-blue.svg)](https://www.typescriptlang.org)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-17-blue.svg)](https://www.postgresql.org/)
@@ -54,22 +54,22 @@ Follow these exact commands in order:
 # Navigate to the server folder
 cd server
 
-# 1. Install server dependencies
+# Step 1: Install server dependencies
 npm install
 
-# 2. Configure environment variables (ensure DATABASE_URL and JWT_SECRET are set)
+# Step 2: Configure environment variables (ensure DATABASE_URL and JWT_SECRET are set in server/.env)
 # cp .env.example .env
 
-# 3. Generate Prisma Client
+# Step 3: Generate Prisma Client
 npx prisma generate
 
-# 4. Deploy database migrations
+# Step 4: Deploy the single baseline database migration
 npx prisma migrate deploy
 
-# 5. Seed idempotent demo data (Admin, Staff, Customers, Catalog)
+# Step 5: Seed idempotent demo data (Admin, Staff, Customers, Catalog, Subscriptions, Invoices, Payments)
 npx prisma db seed
 
-# 6. Start the backend API in development mode
+# Step 6: Start the backend API in development mode
 npm run dev
 ```
 The server will log:
@@ -81,16 +81,19 @@ The server will log:
    Frontend URL: http://localhost:5173
 ```
 
+> [!IMPORTANT]
+> **Single Baseline Migration Rule:** This repository maintains a single canonical baseline migration (`20261031133000_baseline`) containing all enums, relations, and recent schema additions (such as `subscriptions.quotationExpiryDate`). Do NOT create additional migrations or edit `schema.prisma` without cross-team coordination.
+
 ### 2. Client Setup
 In a new terminal window:
 ```bash
 # Navigate to the client folder
 cd client
 
-# 1. Install client dependencies
+# Step 1: Install client dependencies
 npm install
 
-# 2. Start the Vite development server
+# Step 2: Start the Vite development server
 npm run dev
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
@@ -101,13 +104,13 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 The database seed provides pre-configured demo credentials for testing role-based workflows:
 
-| Role | Email Address | Password | Permissions & Views |
+| Role | Email Address | Password | What to Test |
 |---|---|---|---|
-| **Admin** | `admin@brightloop.com` | `Admin@1234` | Full access: Catalog (Products, Variants, Plans, Taxes, Discounts), Staff management, manual billing runs, financial executive KPI dashboards. |
-| **Staff** | `staff@brightloop.com` | `Staff@1234` | Operational access: Quotation templates, customer subscriptions, invoice confirmation, email sending, payment entry. |
-| **Customer** | `cust1@acmecorp.com` | `Customer@1234` | Customer portal: View own subscriptions, view & download invoices, submit payments. Completely isolated from other customer records and staff endpoints. |
-
-Additional customer accounts seeded: `cust2@globex.com`, `cust3@initech.com` (password: `Customer@1234`).
+| **Admin** | `admin@brightloop.com` | `Admin@1234` | Full access: Catalog (Products, Variants, Plans, Taxes, Discounts), Staff management, manual billing runs, financial executive KPI dashboards (`/dashboard`). |
+| **Staff** | `staff@brightloop.com` | `Staff@1234` | Operational access: Quotation templates (`/templates`), customer subscriptions, invoice confirmation, email sending, payment entry. |
+| **Customer 1** | `cust1@acmecorp.com` | `Customer@1234` | Customer portal: Has 3 ACTIVE subscriptions. Tests customer scoping (`/subscriptions`, `/invoices`, `/payments`), verifying no other customer's records appear, and confirming 403 Forbidden on staff-only endpoints. |
+| **Customer 2** | `cust2@globex.com` | `Customer@1234` | Multi-tenant customer isolation: Independent subscription and billing history. |
+| **Customer 3** | `cust3@initech.com` | `Customer@1234` | Multi-tenant customer isolation: Independent customer portal. |
 
 ---
 
@@ -119,10 +122,10 @@ Run the automated test suite in the server:
 cd server
 npm test
 ```
-All 14 test files and 116 tests will run and pass:
+All 15 test files and 133 tests will run and pass:
 ```
- Test Files  14 passed (14)
-      Tests  116 passed (116)
+ Test Files  15 passed (15)
+      Tests  133 passed (133)
 ```
 
 To run TypeScript verification:
@@ -154,7 +157,22 @@ If Prisma commands fail with `EPERM: operation not permitted, unlink '...query_e
 - Windows locks `.dll` and `.node` binaries while they are loaded in memory by an active Node.js server process.
 - Stop or kill the running Node.js server process holding the database connection first, then re-run `npx prisma generate` or `npx prisma migrate deploy`.
 
-### 3. Missing `quotationExpiryDate` Column / Schema Out of Sync
+### 3. `Environment variable not found: DATABASE_URL` (UTF-8 BOM Issue)
+If Prisma CLI commands fail with `Environment variable not found: DATABASE_URL` even though `server/.env` contains the variable:
+- Windows text editors (such as Notepad or PowerShell redirection `>`) may save `server/.env` with a UTF-8 Byte Order Mark (BOM: `\uFEFF`), which prevents Prisma from parsing the first environment variable.
+- Rewrite `server/.env` as plain UTF-8 without BOM:
+  ```powershell
+  $content = [IO.File]::ReadAllText("server/.env")
+  [IO.File]::WriteAllText("server/.env", $content.TrimStart([char]0xFEFF), (New-Object System.Text.UTF8Encoding($false)))
+  ```
+
+### 4. Blank Page / White Screen on Load
+If navigating to `http://localhost:5173` renders a blank page:
+1. Open DevTools (`F12`) and inspect the **Console** and **Network** tabs for uncaught errors.
+2. Perform a hard refresh using `Ctrl + F5` to clear stale cached Vite chunks.
+3. Ensure the backend API is running on port 5000 (`http://localhost:5000/api/health` returns `200 OK`) so client authentication requests resolve successfully.
+
+### 5. Missing `quotationExpiryDate` Column / Schema Out of Sync
 If queries to `subscriptions` fail with a message that column `quotationExpiryDate` does not exist:
 1. Ensure Prisma client is up to date:
    ```bash
@@ -164,10 +182,6 @@ If queries to `subscriptions` fail with a message that column `quotationExpiryDa
 2. Apply the baseline migration:
    ```bash
    npx prisma migrate deploy
-   ```
-   Or synchronize the schema directly:
-   ```bash
-   npx prisma db push
    ```
 3. Verify status:
    ```bash
