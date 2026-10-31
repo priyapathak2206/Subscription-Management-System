@@ -13,18 +13,27 @@ describe('Payment Processing & Overpayment Protection', () => {
       status: 'CONFIRMED',
     };
 
-    const findUniqueSpy = vi.spyOn(prisma.invoice, 'findUnique').mockResolvedValue(mockInvoice as any);
+    const txSpy = vi.spyOn(prisma, '$transaction').mockImplementation(async (fn: any) => {
+      return fn({
+        invoice: {
+          findUnique: vi.fn().mockResolvedValue(mockInvoice),
+        },
+      });
+    });
 
     // Attempt to pay $50 when outstanding is only $40
     await expect(
-      recordPayment({
-        invoiceId: 'inv-123',
-        amount: 50.0,
-        method: 'CARD',
-      })
+      recordPayment(
+        {
+          invoiceId: 'inv-123',
+          amount: 50.0,
+          method: 'CARD',
+        },
+        { id: 'admin-1', role: 'ADMIN' }
+      )
     ).rejects.toThrow(/exceeds outstanding balance/);
 
-    findUniqueSpy.mockRestore();
+    txSpy.mockRestore();
   });
 
   it('calculates outstanding balances correctly across payment cycles', () => {
@@ -59,4 +68,3 @@ describe('Payment Processing & Overpayment Protection', () => {
     expect(isOverdue).toBe(true);
   });
 });
-

@@ -7,7 +7,9 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/brightloop_sub?schema=public',
   jwtSecret: process.env.JWT_SECRET || 'super-secret-jwt-key-brightloop-123456789',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  clientUrl: process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173',
+  frontendUrl: process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173',
+  enableCron: process.env.ENABLE_CRON !== 'false',
   smtp: {
     host: process.env.SMTP_HOST || 'smtp.ethereal.email',
     port: parseInt(process.env.SMTP_PORT || '587', 10),
@@ -16,4 +18,3 @@ export const config = {
     from: process.env.SMTP_FROM || 'Brightloop Software <no-reply@brightloop.com>',
   },
 };
-

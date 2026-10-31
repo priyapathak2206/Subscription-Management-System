@@ -2,13 +2,26 @@ import cron from 'node-cron';
 import { prisma } from './db/prisma.js';
 import { SubscriptionStatus } from '@prisma/client';
 
+let isCronInitialized = false;
+
 export function setupCronJobs(billingJobFn?: () => Promise<any>) {
+  if (process.env.ENABLE_CRON === 'false') {
+    console.log('[Cron] Cron jobs disabled via ENABLE_CRON=false environment variable.');
+    return;
+  }
+
+  if (isCronInitialized) {
+    console.log('[Cron] Cron jobs already initialized in this process. Skipping duplicate registration.');
+    return;
+  }
+  isCronInitialized = true;
+
   // 1. Daily midnight auto-close cron job
   cron.schedule('0 0 * * *', async () => {
     try {
       console.log('[Cron] Running daily auto-close check for expired subscriptions...');
       const now = new Date();
-      
+
       const expiredSubs = await prisma.subscription.findMany({
         where: {
           status: SubscriptionStatus.ACTIVE,
@@ -54,7 +67,8 @@ export function setupCronJobs(billingJobFn?: () => Promise<any>) {
       console.error('[Cron] Error during recurring billing cron job:', err);
     }
   });
+
+  console.log('[Cron] Cron jobs registered successfully (auto-close @ 00:00, recurring billing @ 01:00).');
 }
 
 export default setupCronJobs;
-

@@ -28,6 +28,7 @@ interface PaymentRecord {
   paymentDate: string;
   status: 'COMPLETED' | 'PROCESSING' | 'FAILED';
   note?: string;
+  customer?: { id: string; name: string; email: string };
 }
 
 const INITIAL_PAYMENTS: PaymentRecord[] = [
@@ -76,6 +77,15 @@ const INITIAL_PAYMENTS: PaymentRecord[] = [
     note: 'Monthly cloud cluster renewal',
   },
 ];
+
+const METHOD_BADGES: Record<string, { bg: string; text: string; border: string }> = {
+  CARD: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+  UPI: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  BANK_TRANSFER: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  CASH: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  CHEQUE: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  OTHER: { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+};
 
 export const PaymentsPage: React.FC = () => {
   const { user, isCustomer } = useAuth();
